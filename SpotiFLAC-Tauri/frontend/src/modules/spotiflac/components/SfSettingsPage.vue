@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, watch, onMounted } from "vue";
+import { ref, reactive, watch } from "vue";
 import {
   useSettings,
   type FolderPreset,
@@ -39,6 +39,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { toast } from "vue-sonner";
 import SfPlatformIcons from "./SfPlatformIcons.vue";
 
+const props = defineProps<{
+  onUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void;
+  onResetRequest?: ((resetFn: () => void) => void) | null;
+}>();
+
 const { settings, save, reset, initialized } = useSettings();
 
 // Local temporary state for unsaved changes
@@ -59,6 +64,7 @@ watch(
   () => {
     hasUnsavedChanges.value =
       JSON.stringify(tempSettings) !== JSON.stringify(settings.value);
+    props.onUnsavedChangesChange?.(hasUnsavedChanges.value);
   },
   { deep: true },
 );
@@ -66,6 +72,7 @@ watch(
 const handleSave = async () => {
   await save({ ...tempSettings });
   hasUnsavedChanges.value = false;
+  props.onUnsavedChangesChange?.(false);
   toast.success("Settings saved successfully");
 };
 
@@ -73,7 +80,14 @@ const handleReset = async () => {
   await reset();
   Object.assign(tempSettings, settings.value);
   hasUnsavedChanges.value = false;
+  props.onUnsavedChangesChange?.(false);
   toast.success("Settings reset to defaults");
+};
+
+const resetToSavedSettings = () => {
+  Object.assign(tempSettings, settings.value);
+  hasUnsavedChanges.value = false;
+  props.onUnsavedChangesChange?.(false);
 };
 
 const pickFolder = async () => {
@@ -108,6 +122,14 @@ const QUALITY_DESC = {
     "27": "24-bit FLAC",
   },
 };
+
+watch(
+  () => props.onResetRequest,
+  (registerReset) => {
+    registerReset?.(resetToSavedSettings);
+  },
+  { immediate: true },
+);
 </script>
 
 <template>

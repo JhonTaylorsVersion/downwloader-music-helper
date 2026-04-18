@@ -46,7 +46,11 @@ interface FetchHistoryItem {
   timestamp: number;
 }
 
-const activeTab = ref('downloads');
+const emit = defineEmits<{
+  (e: 'historySelect', cachedData: string): void;
+}>();
+
+const activeTab = ref<'downloads' | 'fetches'>('downloads');
 const downloadHistory = ref<DownloadHistoryItem[]>([]);
 const fetchHistory = ref<FetchHistoryItem[]>([]);
 
@@ -122,7 +126,7 @@ const paginatedDownloads = computed(() => {
 });
 
 const filteredFetchHistory = computed(() => {
-  let result = fetchHistory.value.filter(v => v.type === activeFetchTab.value);
+  let result = fetchHistory.value.filter(v => v.type?.toLowerCase() === activeFetchTab.value);
   if (fetchSearchQuery.value) {
     const q = fetchSearchQuery.value.toLowerCase();
     result = result.filter(v => v.name.toLowerCase().includes(q) || v.info.toLowerCase().includes(q));
@@ -188,8 +192,17 @@ const getTrackLink = (spotifyId: string) => {
 };
 
 const openInBrowser = async (url: string) => {
-  // Use Tauri's open plugin if available, or window.open
-  window.open(url, '_blank');
+  try {
+    await invoke('open_url', { url });
+  } catch (error) {
+    console.error("Failed to open URL via backend:", error);
+    window.open(url, '_blank');
+  }
+};
+
+const restoreFetchState = (item: FetchHistoryItem) => {
+  if (!item.data) return;
+  emit('historySelect', item.data);
 };
 
 const showClearConfirm = ref(false);
@@ -212,8 +225,8 @@ const showClearConfirm = ref(false);
           Downloads
         </button>
         <button 
-          @click="activeTab = 'fetching'" 
-          :class="['px-6 py-2 rounded-lg text-sm font-medium transition-all', activeTab === 'fetching' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground']"
+          @click="activeTab = 'fetches'" 
+          :class="['px-6 py-2 rounded-lg text-sm font-medium transition-all', activeTab === 'fetches' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground']"
         >
           Fetch Logs
         </button>
@@ -376,7 +389,7 @@ const showClearConfirm = ref(false);
                 </Button>
              </div>
              <div class="mt-3 flex gap-2">
-                <Button variant="secondary" size="sm" class="flex-1 h-8 text-[11px] font-bold group-hover:bg-primary group-hover:text-primary-foreground transition-colors overflow-hidden relative">
+                <Button variant="secondary" size="sm" class="flex-1 h-8 text-[11px] font-bold group-hover:bg-primary group-hover:text-primary-foreground transition-colors overflow-hidden relative" @click="restoreFetchState(item)">
                   <span class="relative z-10 flex items-center gap-1 justify-center">
                     <CloudUpload class="h-3.5 w-3.5" />
                     RESTORE STATE

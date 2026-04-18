@@ -29,6 +29,10 @@ const { settings, loadSettings, applyTheme } = useSettings();
 const { ensureApiStatusCheckStarted } = useApiStatus();
 const currentPage = ref<PageType>('main');
 const showDownloadQueue = ref(false);
+const hasUnsavedSettings = ref(false);
+const pendingPageChange = ref<PageType | null>(null);
+const showUnsavedChangesDialog = ref(false);
+const resetSettingsFn = ref<(() => void) | null>(null);
 
 // FFmpeg State
 const isFFmpegInstalled = ref<boolean | null>(null);
@@ -147,10 +151,44 @@ const scrollToTop = () => {
 const handlePageChange = (page: PageType | 'queue') => {
   if (page === 'queue') {
     showDownloadQueue.value = true;
+  } else if (currentPage.value === 'settings' && hasUnsavedSettings.value && page !== 'settings') {
+    pendingPageChange.value = page;
+    showUnsavedChangesDialog.value = true;
   } else {
     currentPage.value = page;
     scrollToTop();
   }
+};
+
+const handleDiscardChanges = () => {
+  showUnsavedChangesDialog.value = false;
+  resetSettingsFn.value?.();
+  const savedSettings = settings.value;
+  applyTheme(savedSettings.theme);
+  if (pendingPageChange.value) {
+    currentPage.value = pendingPageChange.value;
+    pendingPageChange.value = null;
+    hasUnsavedSettings.value = false;
+    scrollToTop();
+  }
+};
+
+const handleCancelNavigation = () => {
+  showUnsavedChangesDialog.value = false;
+  pendingPageChange.value = null;
+};
+
+const handleUnsavedChangesChange = (value: boolean) => {
+  hasUnsavedSettings.value = value;
+};
+
+const handleRegisterSettingsReset = (fn: () => void) => {
+  resetSettingsFn.value = fn;
+};
+
+const handleHistorySelect = (cachedData: string) => {
+  currentPage.value = 'main';
+  window.dispatchEvent(new CustomEvent('spotiflac:history-select', { detail: cachedData }));
 };
 </script>
 
@@ -174,9 +212,16 @@ const handlePageChange = (page: PageType | 'queue') => {
         >
           <div :key="currentPage" class="h-full max-w-6xl mx-auto">
             <SfMainPage v-if="currentPage === 'main'" />
-            <SfSettingsPage v-else-if="currentPage === 'settings'" />
+            <SfSettingsPage
+              v-else-if="currentPage === 'settings'"
+              :on-unsaved-changes-change="handleUnsavedChangesChange"
+              :on-reset-request="handleRegisterSettingsReset"
+            />
             <SfAboutPage v-else-if="currentPage === 'about'" />
-            <SfHistoryPage v-else-if="currentPage === 'history'" />
+            <SfHistoryPage
+              v-else-if="currentPage === 'history'"
+              @history-select="handleHistorySelect"
+            />
             <SfAudioAnalysisPage v-else-if="currentPage === 'audio-analysis'" />
             <SfAudioConverterPage v-else-if="currentPage === 'audio-converter'" />
             <SfAudioResamplerPage v-else-if="currentPage === 'audio-resampler'" />
@@ -249,6 +294,21 @@ const handlePageChange = (page: PageType | 'queue') => {
         </div>
       </div>
     </div>
+
+    <Dialog v-model:open="showUnsavedChangesDialog">
+      <DialogContent class="sm:max-w-[425px] [&>button]:hidden">
+        <DialogHeader>
+          <DialogTitle>Unsaved Changes</DialogTitle>
+          <DialogDescription>
+            You have unsaved changes in Settings. Are you sure you want to leave? Your changes will be lost.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" @click="handleCancelNavigation">Cancel</Button>
+          <Button variant="destructive" @click="handleDiscardChanges">Discard Changes</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     <!-- Global Components -->
     <Toaster position="bottom-right" richColors closeButton theme="dark" />

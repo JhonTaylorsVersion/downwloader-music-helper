@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { 
   SfSearchBar, SfAlbumView, SfTrackInfo, SfPlaylistView, 
   SfArtistView, SfFetchHistory 
@@ -95,6 +95,21 @@ const handleDownloadAll = () => {
   if (!metadata.value) return;
   downloadBatch(metadata.value.track_list);
 };
+
+const handleHistoryRestore = (event: Event) => {
+  const cachedData = (event as CustomEvent<string>).detail;
+  if (typeof cachedData === 'string' && cachedData) {
+    loadFromCache(cachedData);
+  }
+};
+
+onMounted(() => {
+  window.addEventListener('spotiflac:history-select', handleHistoryRestore);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('spotiflac:history-select', handleHistoryRestore);
+});
 
 // Mode Detection
 const currentView = computed(() => {

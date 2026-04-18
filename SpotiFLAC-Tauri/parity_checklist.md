@@ -28,10 +28,19 @@ Source of truth for parity:
 - [x] `get_spotify_metadata` supports `track`, `album`, `playlist`, and `artist`
 - [x] Rust metadata response shape matches original `frontend/src/types/api.ts`
 - [ ] Main app shell fully reproduces original page orchestration from `App.tsx`
-- [ ] Unsaved settings dialog exists and works
+- [x] Unsaved settings dialog exists and works
 - [ ] Search/fetch flow behaves the same as the original shell for every entity type
 - [ ] Artist click resolves and opens discography flow with real backend metadata
 - [ ] Album, playlist, and artist pages render from real backend payloads
+
+## Phase 3
+
+- [x] Tauri settings defaults now match the original `frontend/src/lib/settings.ts`
+- [x] Settings normalization/migration logic matches the original legacy contracts
+- [x] Template parsing fallback values match the original settings helper
+- [x] App shell now blocks navigation away from Settings when there are unsaved changes
+- [x] History page can restore cached fetch payloads back into the main view
+- [x] History page opens original URLs through the Tauri shell command instead of raw `window.open`
 
 ## Structural follow-up
 
