@@ -13,18 +13,18 @@ export function useDownloadQueueData() {
         let current_speed = 0;
 
         for (const item of store.queue) {
-            if (item.status === 'Queued') queued_count++;
-            if (item.status === 'Completed') completed_count++;
-            if (item.status === 'Failed') failed_count++;
-            if (item.status === 'Skipped') skipped_count++;
-            if (item.status === 'Downloading') {
-                current_speed += item.speed_mbps || 0;
+            if (item.status === 'queued') queued_count++;
+            if (item.status === 'completed') completed_count++;
+            if (item.status === 'failed') failed_count++;
+            if (item.status === 'skipped') skipped_count++;
+            if (item.status === 'downloading') {
+                current_speed += item.speed || 0;
             }
-            total_downloaded += item.progress_mb || 0;
+            total_downloaded += item.progress || 0;
         }
 
         return {
-            is_downloading: store.queue.some(i => i.status === 'Downloading'),
+            is_downloading: store.queue.some(i => i.status === 'downloading'),
             queue: store.queue,
             current_speed,
             total_downloaded,

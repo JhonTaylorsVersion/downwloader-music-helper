@@ -1,10 +1,10 @@
-use anyhow::{Result, anyhow};
-use serde_json::{Value, json};
-use crate::isrc::LinkResolver;
 use crate::isrc::spotify_id;
 use crate::isrc::totp;
+use crate::isrc::LinkResolver;
 use crate::models::TrackMetadata;
+use anyhow::{anyhow, Result};
 use reqwest::Client;
+use serde_json::{json, Value};
 
 pub struct SpotifyMetadataClient {
     resolver: LinkResolver,
@@ -18,14 +18,17 @@ impl SpotifyMetadataClient {
             http: Client::new(),
         }
     }
-    pub async fn fetch_track_info_enriched(&self, input: &str) -> Result<(TrackMetadata, Option<String>)> {
+    pub async fn fetch_track_info_enriched(
+        &self,
+        input: &str,
+    ) -> Result<(TrackMetadata, Option<String>)> {
         let (entity_type, id) = spotify_id::parse_spotify_url(input)?;
         if entity_type != "track" {
             return Err(anyhow!("Expected a track URL/ID, got: {}", entity_type));
         }
 
         let token = self.resolver.get_anonymous_token().await?;
-        
+
         // 1. Basic Metadata (GraphQL)
         let query_url = "https://api-partner.spotify.com/pathfinder/v1/query";
         let variables = json!({ "uri": format!("spotify:track:{}", id) });
@@ -36,7 +39,9 @@ impl SpotifyMetadataClient {
             }
         });
 
-        let response = self.http.get(query_url)
+        let response = self
+            .http
+            .get(query_url)
             .query(&[
                 ("operationName", "getTrack"),
                 ("variables", &variables.to_string()),
@@ -47,8 +52,10 @@ impl SpotifyMetadataClient {
             .await?;
 
         let data: Value = response.json().await?;
-        let track_union = data.pointer("/data/trackUnion").ok_or_else(|| anyhow!("Track not found in GraphQL response"))?;
-        
+        let track_union = data
+            .pointer("/data/trackUnion")
+            .ok_or_else(|| anyhow!("Track not found in GraphQL response"))?;
+
         let (mut metadata, first_artist_id) = self.parse_single_track_node(track_union, &data)?;
 
         // 2. Enriquecimiento vía spclient (ISRC, UPC, Sellos, Totales)
@@ -57,11 +64,17 @@ impl SpotifyMetadataClient {
             metadata.upc = enriched.upc;
             metadata.label = enriched.label;
             metadata.copyright = enriched.copyright;
-            
+
             // Solo sobreescribir si no lo obtuvimos de GraphQL
-            if metadata.total_tracks.is_none() { metadata.total_tracks = enriched.total_tracks; }
-            if metadata.total_discs.is_none() { metadata.total_discs = enriched.total_discs; }
-            if metadata.album_artist.is_none() { metadata.album_artist = enriched.album_artist; }
+            if metadata.total_tracks.is_none() {
+                metadata.total_tracks = enriched.total_tracks;
+            }
+            if metadata.total_discs.is_none() {
+                metadata.total_discs = enriched.total_discs;
+            }
+            if metadata.album_artist.is_none() {
+                metadata.album_artist = enriched.album_artist;
+            }
         }
 
         // 3. Créditos (Compositor)
@@ -81,7 +94,11 @@ impl SpotifyMetadataClient {
         Ok((metadata, first_artist_id))
     }
 
-    pub async fn fetch_artist_info(&self, artist_id: &str, token: &str) -> Result<crate::models::ArtistMetadata> {
+    pub async fn fetch_artist_info(
+        &self,
+        artist_id: &str,
+        token: &str,
+    ) -> Result<crate::models::ArtistMetadata> {
         let query_url = "https://api-partner.spotify.com/pathfinder/v1/query";
         let variables = json!({ "uri": format!("spotify:artist:{}", artist_id), "locale": "" });
         let extensions = json!({
@@ -91,7 +108,9 @@ impl SpotifyMetadataClient {
             }
         });
 
-        let response = self.http.get(query_url)
+        let response = self
+            .http
+            .get(query_url)
             .query(&[
                 ("operationName", "queryArtistOverview"),
                 ("variables", &variables.to_string()),
@@ -103,23 +122,34 @@ impl SpotifyMetadataClient {
             .json::<Value>()
             .await?;
 
-        let artist_union = response.pointer("/data/artistUnion").ok_or_else(|| anyhow!("Artist not found"))?;
-        
-        let name = artist_union.pointer("/profile/name").and_then(|v| v.as_str()).unwrap_or("Unknown Artist").to_string();
-        
-        let avatar_url = artist_union.pointer("/visuals/avatarImage/sources")
+        let artist_union = response
+            .pointer("/data/artistUnion")
+            .ok_or_else(|| anyhow!("Artist not found"))?;
+
+        let name = artist_union
+            .pointer("/profile/name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown Artist")
+            .to_string();
+
+        let avatar_url = artist_union
+            .pointer("/visuals/avatarImage/sources")
             .and_then(|s| s.as_array())
-            .and_then(|a| a.iter().max_by_key(|i| i.get("width").and_then(|w| w.as_u64()).unwrap_or(0)))
+            .and_then(|a| {
+                a.iter()
+                    .max_by_key(|i| i.get("width").and_then(|w| w.as_u64()).unwrap_or(0))
+            })
             .and_then(|i| i.get("url"))
             .and_then(|u| u.as_str())
             .map(|s| s.to_string());
 
-        let header_url = artist_union.pointer("/visuals/headerImage/sources")
-             .and_then(|s| s.as_array())
-             .and_then(|a| a.get(0)) 
-             .and_then(|i| i.get("url"))
-             .and_then(|u| u.as_str())
-             .map(|s| s.to_string());
+        let header_url = artist_union
+            .pointer("/visuals/headerImage/sources")
+            .and_then(|s| s.as_array())
+            .and_then(|a| a.get(0))
+            .and_then(|i| i.get("url"))
+            .and_then(|u| u.as_str())
+            .map(|s| s.to_string());
 
         let mut gallery_urls = Vec::new();
         if let Some(items) = artist_union.pointer("/visuals/gallery/items") {
@@ -144,8 +174,10 @@ impl SpotifyMetadataClient {
     async fn fetch_enriched_metadata(&self, track_id: &str, token: &str) -> Result<EnrichedData> {
         let gid = spotify_id::spotify_id_to_gid(track_id)?;
         let url = format!("https://spclient.wg.spotify.com/metadata/4/track/{}", gid);
-        
-        let resp = self.http.get(&url)
+
+        let resp = self
+            .http
+            .get(&url)
             .header("Authorization", format!("Bearer {}", token))
             .header("Accept", "application/json")
             .send()
@@ -154,7 +186,7 @@ impl SpotifyMetadataClient {
             .await?;
 
         let isrc = self.extract_external_id(&resp, "isrc");
-        
+
         // Go logic: Try to separate standard copyright and phonographic copyright
         let mut copyright = None;
         if let Some(cr_array) = resp.get("copyright").and_then(|v| v.as_array()) {
@@ -181,21 +213,30 @@ impl SpotifyMetadataClient {
         let mut album_artist = None;
 
         if let Some(album_gid) = resp.pointer("/album/gid").and_then(|v| v.as_str()) {
-            let album_url = format!("https://spclient.wg.spotify.com/metadata/4/album/{}", album_gid);
-            if let Ok(album_resp) = self.http.get(&album_url)
+            let album_url = format!(
+                "https://spclient.wg.spotify.com/metadata/4/album/{}",
+                album_gid
+            );
+            if let Ok(album_resp) = self
+                .http
+                .get(&album_url)
                 .header("Authorization", format!("Bearer {}", token))
                 .header("Accept", "application/json")
                 .send()
                 .await?
                 .json::<Value>()
-                .await 
+                .await
             {
                 upc = self.extract_external_id(&album_resp, "upc");
-                label = album_resp.get("label").and_then(|v| v.as_str()).map(|s| s.to_string());
-                
+                label = album_resp
+                    .get("label")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+
                 // Extract Album Artist from spclient if possible
                 if let Some(a_arr) = album_resp.get("artist").and_then(|v| v.as_array()) {
-                    let artists: Vec<String> = a_arr.iter()
+                    let artists: Vec<String> = a_arr
+                        .iter()
                         .filter_map(|a| a.get("name").and_then(|n| n.as_str()))
                         .map(|s| s.to_string())
                         .collect();
@@ -217,15 +258,30 @@ impl SpotifyMetadataClient {
             }
         }
 
-        Ok(EnrichedData { isrc, upc, label, copyright, total_tracks, total_discs, album_artist })
+        Ok(EnrichedData {
+            isrc,
+            upc,
+            label,
+            copyright,
+            total_tracks,
+            total_discs,
+            album_artist,
+        })
     }
 
     fn extract_external_id(&self, data: &Value, id_type: &str) -> Option<String> {
         data.get("external_id")
             .and_then(|v| v.as_array())
-            .and_then(|arr| arr.iter().find(|entry| 
-                entry.get("type").and_then(|t| t.as_str()).unwrap_or("").to_lowercase() == id_type.to_lowercase()
-            ))
+            .and_then(|arr| {
+                arr.iter().find(|entry| {
+                    entry
+                        .get("type")
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("")
+                        .to_lowercase()
+                        == id_type.to_lowercase()
+                })
+            })
             .and_then(|entry| entry.get("id").and_then(|i| i.as_str()))
             .map(|s| s.to_string())
     }
@@ -244,7 +300,9 @@ impl SpotifyMetadataClient {
             }
         });
 
-        let resp = self.http.get(query_url)
+        let resp = self
+            .http
+            .get(query_url)
             .query(&[
                 ("operationName", "queryTrackCreditsModal"),
                 ("variables", &variables.to_string()),
@@ -271,37 +329,367 @@ impl SpotifyMetadataClient {
         }
 
         if composers.is_empty() {
-             return Err(anyhow!("No composers found"));
+            return Err(anyhow!("No composers found"));
         }
 
         Ok(composers.join(", "))
     }
 
-    fn parse_single_track_node(&self, node: &Value, root: &Value) -> Result<(TrackMetadata, Option<String>)> {
-        let name = node.get("name").and_then(|v| v.as_str()).unwrap_or("Unknown Track").to_string();
-        
+    pub async fn search(&self, query: &str, limit: u32) -> Result<crate::models::SearchResponse> {
+        let tracks = self
+            .search_by_type(query, "track", limit, 0)
+            .await
+            .unwrap_or_default();
+        let albums = self
+            .search_by_type(query, "album", limit, 0)
+            .await
+            .unwrap_or_default();
+        let artists = self
+            .search_by_type(query, "artist", limit, 0)
+            .await
+            .unwrap_or_default();
+        let playlists = self
+            .search_by_type(query, "playlist", limit, 0)
+            .await
+            .unwrap_or_default();
+
+        Ok(crate::models::SearchResponse {
+            tracks,
+            albums,
+            artists,
+            playlists,
+        })
+    }
+
+    pub async fn search_by_type(
+        &self,
+        query: &str,
+        search_type: &str,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<crate::models::SearchResult>> {
+        let token = self.resolver.get_anonymous_token().await?;
+        let query_url = "https://api-partner.spotify.com/pathfinder/v1/query";
+
+        let variables = json!({
+            "searchTerm": query,
+            "offset": offset,
+            "limit": limit,
+            "numberOfTopResults": 5,
+            "includeAudiobooks": true,
+            "includeArtistHasConcertsField": false,
+            "includePreReleases": true,
+            "includeAuthors": false
+        });
+
+        let extensions = json!({
+            "persistedQuery": {
+                "version": 1,
+                "sha256Hash": "fcad5a3e0d5af727fb76966f06971c19cfa2275e6ff7671196753e008611873c"
+            }
+        });
+
+        let response = self
+            .http
+            .get(query_url)
+            .query(&[
+                ("operationName", "searchDesktop"),
+                ("variables", &variables.to_string()),
+                ("extensions", &extensions.to_string()),
+            ])
+            .header("Authorization", format!("Bearer {}", token))
+            .send()
+            .await?
+            .json::<Value>()
+            .await?;
+
+        let search_results = response
+            .pointer("/data/searchV2")
+            .ok_or_else(|| anyhow!("Search data not found"))?;
+        let mut results = Vec::new();
+
+        match search_type {
+            "track" => {
+                if let Some(items) = search_results.pointer("/tracksV2/items") {
+                    for item in items.as_array().unwrap_or(&vec![]) {
+                        let node = item.get("item").and_then(|i| i.get("data")).unwrap_or(item);
+                        let id = node.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                        if id.is_empty() {
+                            continue;
+                        }
+
+                        let name = node
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Unknown")
+                            .to_string();
+                        let artists = node
+                            .pointer("/artists/items")
+                            .and_then(|a| a.as_array())
+                            .map(|arr| {
+                                arr.iter()
+                                    .filter_map(|a| {
+                                        a.pointer("/profile/name").and_then(|v| v.as_str())
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            })
+                            .unwrap_or_else(|| "Unknown Artist".to_string());
+
+                        let album = node
+                            .pointer("/albumOfTrack/name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Unknown Album")
+                            .to_string();
+                        let duration_ms = node
+                            .pointer("/duration/totalMilliseconds")
+                            .and_then(|v| v.as_u64())
+                            .map(|v| v as u32);
+                        let is_explicit = node
+                            .pointer("/contentRating/label")
+                            .and_then(|v| v.as_str())
+                            == Some("EXPLICIT");
+
+                        let images = node
+                            .pointer("/albumOfTrack/coverArt/sources/0/url")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+
+                        results.push(crate::models::SearchResult {
+                            id: id.to_string(),
+                            name,
+                            item_type: "track".to_string(),
+                            artists: Some(artists),
+                            album_name: Some(album),
+                            images,
+                            release_date: None,
+                            external_urls: format!("https://open.spotify.com/track/{}", id),
+                            duration_ms,
+                            total_tracks: None,
+                            owner: None,
+                            is_explicit: Some(is_explicit),
+                        });
+                    }
+                }
+            }
+            "album" => {
+                if let Some(items) = search_results.pointer("/albumsV2/items") {
+                    for item in items.as_array().unwrap_or(&vec![]) {
+                        let node = item.get("item").and_then(|i| i.get("data")).unwrap_or(item);
+                        let id = node
+                            .get("id")
+                            .and_then(|v| v.as_str())
+                            .or_else(|| {
+                                node.get("uri")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.split(':').last().unwrap_or(""))
+                            })
+                            .unwrap_or("");
+                        if id.is_empty() {
+                            continue;
+                        }
+
+                        let name = node
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Unknown")
+                            .to_string();
+                        let artists = node
+                            .pointer("/artists/items")
+                            .and_then(|a| a.as_array())
+                            .map(|arr| {
+                                arr.iter()
+                                    .filter_map(|a| {
+                                        a.pointer("/profile/name").and_then(|v| v.as_str())
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            })
+                            .unwrap_or_else(|| "Unknown Artist".to_string());
+
+                        let images = node
+                            .pointer("/coverArt/sources/0/url")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let date = node
+                            .pointer("/date/isoString")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string());
+
+                        results.push(crate::models::SearchResult {
+                            id: id.to_string(),
+                            name,
+                            item_type: "album".to_string(),
+                            artists: Some(artists),
+                            album_name: None,
+                            images,
+                            release_date: date,
+                            external_urls: format!("https://open.spotify.com/album/{}", id),
+                            duration_ms: None,
+                            total_tracks: None,
+                            owner: None,
+                            is_explicit: None,
+                        });
+                    }
+                }
+            }
+            "artist" => {
+                if let Some(items) = search_results.pointer("/artistsV2/items") {
+                    for item in items.as_array().unwrap_or(&vec![]) {
+                        let node = item.get("item").and_then(|i| i.get("data")).unwrap_or(item);
+                        let id = node
+                            .get("id")
+                            .and_then(|v| v.as_str())
+                            .or_else(|| {
+                                node.get("uri")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.split(':').last().unwrap_or(""))
+                            })
+                            .unwrap_or("");
+                        if id.is_empty() {
+                            continue;
+                        }
+
+                        let name = node
+                            .pointer("/profile/name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Unknown")
+                            .to_string();
+                        let images = node
+                            .pointer("/visuals/avatarImage/sources/0/url")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+
+                        results.push(crate::models::SearchResult {
+                            id: id.to_string(),
+                            name,
+                            item_type: "artist".to_string(),
+                            artists: None,
+                            album_name: None,
+                            images,
+                            release_date: None,
+                            external_urls: format!("https://open.spotify.com/artist/{}", id),
+                            duration_ms: None,
+                            total_tracks: None,
+                            owner: None,
+                            is_explicit: None,
+                        });
+                    }
+                }
+            }
+            "playlist" => {
+                if let Some(items) = search_results.pointer("/playlistsV2/items") {
+                    for item in items.as_array().unwrap_or(&vec![]) {
+                        let node = item.get("item").and_then(|i| i.get("data")).unwrap_or(item);
+                        let id = node
+                            .get("id")
+                            .and_then(|v| v.as_str())
+                            .or_else(|| {
+                                node.get("uri")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.split(':').last().unwrap_or(""))
+                            })
+                            .unwrap_or("");
+                        if id.is_empty() {
+                            continue;
+                        }
+
+                        let name = node
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Unknown")
+                            .to_string();
+                        let images = node
+                            .pointer("/images/items/0/sources/0/url")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let owner = node
+                            .pointer("/ownerV2/data/name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("Unknown")
+                            .to_string();
+
+                        results.push(crate::models::SearchResult {
+                            id: id.to_string(),
+                            name,
+                            item_type: "playlist".to_string(),
+                            artists: None,
+                            album_name: None,
+                            images,
+                            release_date: None,
+                            external_urls: format!("https://open.spotify.com/playlist/{}", id),
+                            duration_ms: None,
+                            total_tracks: None,
+                            owner: Some(owner),
+                            is_explicit: None,
+                        });
+                    }
+                }
+            }
+            _ => return Err(anyhow!("Unsupported search type: {}", search_type)),
+        }
+
+        Ok(results)
+    }
+
+    pub fn parse_duration(&self, duration_str: &str) -> u32 {
+        let parts: Vec<&str> = duration_str.split(':').collect();
+        match parts.len() {
+            1 => parts[0].parse::<u32>().unwrap_or(0) * 1000,
+            2 => {
+                let mins = parts[0].parse::<u32>().unwrap_or(0);
+                let secs = parts[1].parse::<u32>().unwrap_or(0);
+                (mins * 60 + secs) * 1000
+            }
+            _ => 0,
+        }
+    }
+
+    fn parse_single_track_node(
+        &self,
+        node: &Value,
+        root: &Value,
+    ) -> Result<(TrackMetadata, Option<String>)> {
+        let name = node
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown Track")
+            .to_string();
+
         let mut artists = Vec::new();
         let mut first_artist_id = None;
 
         if let Some(first) = node.pointer("/firstArtist/items") {
-             if let Some(arr) = first.as_array() {
-                 for a in arr {
-                     if let Some(n) = a.pointer("/profile/name") {
-                         artists.push(n.as_str().unwrap_or("").to_string());
-                         if first_artist_id.is_none() {
-                             first_artist_id = a.get("id").and_then(|v| v.as_str()).map(|s| s.to_string());
-                             if first_artist_id.is_none() {
-                                 first_artist_id = a.get("uri").and_then(|v| v.as_str()).map(|s| s.split(':').last().unwrap_or("").to_string());
-                             }
-                         }
-                     }
-                 }
-             }
+            if let Some(arr) = first.as_array() {
+                for a in arr {
+                    if let Some(n) = a.pointer("/profile/name") {
+                        artists.push(n.as_str().unwrap_or("").to_string());
+                        if first_artist_id.is_none() {
+                            first_artist_id =
+                                a.get("id").and_then(|v| v.as_str()).map(|s| s.to_string());
+                            if first_artist_id.is_none() {
+                                first_artist_id = a
+                                    .get("uri")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.split(':').last().unwrap_or("").to_string());
+                            }
+                        }
+                    }
+                }
+            }
         }
-        
+
         // Multi-artist fallback
         if artists.is_empty() {
-            if let Some(arr) = node.get("artists").and_then(|v| v.as_array()).or_else(|| node.pointer("/artists/items").and_then(|v| v.as_array())) {
+            if let Some(arr) = node
+                .get("artists")
+                .and_then(|v| v.as_array())
+                .or_else(|| node.pointer("/artists/items").and_then(|v| v.as_array()))
+            {
                 for a in arr {
                     if let Some(n) = a.get("name").and_then(|v| v.as_str()) {
                         artists.push(n.to_string());
@@ -312,80 +700,127 @@ impl SpotifyMetadataClient {
             }
         }
 
-        let artists_str = if artists.is_empty() { "Unknown Artist".to_string() } else { artists.join(", ") };
+        let artists_str = if artists.is_empty() {
+            "Unknown Artist".to_string()
+        } else {
+            artists.join(", ")
+        };
 
-        let album_node = node.get("albumOfTrack").or_else(|| root.pointer("/data/albumUnion"));
-        let album_name = album_node.and_then(|n| n.get("name")).and_then(|v| v.as_str()).unwrap_or("Unknown Album").to_string();
-        
+        let album_node = node
+            .get("albumOfTrack")
+            .or_else(|| root.pointer("/data/albumUnion"));
+        let album_name = album_node
+            .and_then(|n| n.get("name"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("Unknown Album")
+            .to_string();
+
         // Album Artist from GraphQL
         let mut album_artist = None;
-        if let Some(aa_node) = album_node.and_then(|n| n.get("artists")).and_then(|v| v.as_array()) {
-             let aa_list: Vec<String> = aa_node.iter()
-                .filter_map(|a| a.get("name").and_then(|n| n.as_str()).or_else(|| a.pointer("/profile/name").and_then(|v| v.as_str())))
+        if let Some(aa_node) = album_node
+            .and_then(|n| n.get("artists"))
+            .and_then(|v| v.as_array())
+        {
+            let aa_list: Vec<String> = aa_node
+                .iter()
+                .filter_map(|a| {
+                    a.get("name")
+                        .and_then(|n| n.as_str())
+                        .or_else(|| a.pointer("/profile/name").and_then(|v| v.as_str()))
+                })
                 .map(|s| s.to_string())
                 .collect();
-             if !aa_list.is_empty() {
-                 album_artist = Some(aa_list.join(", "));
-             }
+            if !aa_list.is_empty() {
+                album_artist = Some(aa_list.join(", "));
+            }
         }
 
-        let cover_url = album_node.and_then(|n| n.pointer("/coverArt/sources"))
+        let cover_url = album_node
+            .and_then(|n| n.pointer("/coverArt/sources"))
             .and_then(|s| s.as_array())
             .and_then(|a| {
                 // Find largest
-                a.iter().max_by_key(|i| i.get("width").and_then(|v| v.as_u64()).unwrap_or(0))
+                a.iter()
+                    .max_by_key(|i| i.get("width").and_then(|v| v.as_u64()).unwrap_or(0))
             })
             .and_then(|i| i.get("url"))
             .and_then(|u| u.as_str())
             .map(|s| s.to_string());
 
-        let track_id = node.get("id").and_then(|v| v.as_str())
-            .or_else(|| node.get("uri").and_then(|v| v.as_str()).map(|s| s.split(':').last().unwrap_or("")))
+        let track_id = node
+            .get("id")
+            .and_then(|v| v.as_str())
+            .or_else(|| {
+                node.get("uri")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.split(':').last().unwrap_or(""))
+            })
             .unwrap_or("")
             .to_string();
 
-        let track_num = node.get("trackNumber").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+        let track_num = node
+            .get("trackNumber")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as u32;
         let disc_num = node.get("discNumber").and_then(|v| v.as_u64()).unwrap_or(1) as u32;
-        let is_explicit = node.get("contentRating").and_then(|v| v.get("label")).and_then(|v| v.as_str()) == Some("EXPLICIT");
+        let is_explicit = node
+            .get("contentRating")
+            .and_then(|v| v.get("label"))
+            .and_then(|v| v.as_str())
+            == Some("EXPLICIT");
         let duration_ms = node.get("durationMs").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
 
-        let total_tracks = album_node.and_then(|n| n.pointer("/tracks/totalCount").or(n.pointer("/tracks/total_count")))
+        let total_tracks = album_node
+            .and_then(|n| {
+                n.pointer("/tracks/totalCount")
+                    .or(n.pointer("/tracks/total_count"))
+            })
             .and_then(|v| v.as_u64())
             .map(|v| v as u32);
 
-        let total_discs = album_node.and_then(|n| n.pointer("/discs/totalCount").or(n.pointer("/discs/total_count")))
+        let total_discs = album_node
+            .and_then(|n| {
+                n.pointer("/discs/totalCount")
+                    .or(n.pointer("/discs/total_count"))
+            })
             .and_then(|v| v.as_u64())
             .map(|v| v as u32);
 
-        let date_str = album_node.and_then(|n| n.pointer("/date/isoString")).and_then(|v| v.as_str()).map(|s| s.to_string());
+        let date_str = album_node
+            .and_then(|n| n.pointer("/date/isoString"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
 
-        Ok((TrackMetadata {
-            id: track_id.clone(),
-            title: name,
-            artist: artists_str,
-            album: album_name,
-            album_artist,
-            date: date_str.clone(),
-            release_date: date_str,
-            track_number: track_num,
-            total_tracks,
-            disc_number: disc_num,
-            total_discs,
-            isrc: None,
-            upc: None,
-            cover_url,
-            spotify_url: Some(format!("https://open.spotify.com/track/{}", track_id)),
-            genre: None,
-            label: None,
-            copyright: None,
-            composer: None,
-            lyrics_text: None,
-            is_explicit,
-            duration_ms,
-            artist_avatar_url: None,
-            artist_header_url: None,
-            artist_gallery_urls: None,
-        }, first_artist_id))
+        Ok((
+            TrackMetadata {
+                id: track_id.clone(),
+                title: name,
+                artist: artists_str,
+                album: album_name,
+                album_artist,
+                date: date_str.clone(),
+                release_date: date_str,
+                track_number: track_num,
+                total_tracks,
+                disc_number: disc_num,
+                total_discs,
+                isrc: None,
+                upc: None,
+                cover_url,
+                spotify_url: Some(format!("https://open.spotify.com/track/{}", track_id)),
+                genre: None,
+                label: None,
+                copyright: None,
+                composer: None,
+                lyrics_text: None,
+                is_explicit,
+                duration_ms,
+                artist_avatar_url: None,
+                artist_header_url: None,
+                artist_gallery_urls: None,
+            },
+            first_artist_id,
+        ))
     }
 }
 

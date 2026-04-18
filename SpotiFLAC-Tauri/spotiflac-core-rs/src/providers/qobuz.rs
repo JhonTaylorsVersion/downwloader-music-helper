@@ -158,6 +158,10 @@ impl QobuzProvider {
         format!("{:x}", digest)
     }
 
+    pub async fn search_qobuz_id_from_isrc_for_availability(&self, isrc: &str) -> Result<i64> {
+        self.search_qobuz_id_from_isrc(isrc, false).await
+    }
+
     async fn search_qobuz_id_from_isrc(&self, isrc: &str, force_refresh_creds: bool) -> Result<i64> {
         let creds = self.get_valid_credentials(force_refresh_creds).await?;
         

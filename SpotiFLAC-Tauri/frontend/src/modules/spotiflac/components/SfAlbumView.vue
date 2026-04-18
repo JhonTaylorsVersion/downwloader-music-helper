@@ -140,22 +140,22 @@ interface AlbumInfoData {
   artist_url?: string;
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   albumInfo: AlbumInfoData;
   trackList: TrackMetadata[];
-  searchQuery: string;
-  sortBy: string;
+  searchQuery?: string;
+  sortBy?: string;
   selectedTracks: string[];
   downloadedTracks: Set<string>;
-  failedTracks: Set<string>;
-  skippedTracks: Set<string>;
-  downloadingTrack: string | null;
+  failedTracks?: Set<string>;
+  skippedTracks?: Set<string>;
+  downloadingTrack?: string | null;
   isDownloading: boolean;
-  bulkDownloadType: 'all' | 'selected' | null;
-  downloadProgress: number;
-  currentDownloadInfo: { name: string; artists: string } | null;
-  currentPage: number;
-  itemsPerPage: number;
+  bulkDownloadType?: 'all' | 'selected' | null;
+  downloadProgress?: number;
+  currentDownloadInfo?: { name: string; artists: string; id?: string } | null;
+  currentPage?: number;
+  itemsPerPage?: number;
   downloadedLyrics?: Set<string>;
   failedLyrics?: Set<string>;
   skippedLyrics?: Set<string>;
@@ -172,7 +172,26 @@ const props = defineProps<{
   onArtistClick?: (artist: { id: string; name: string; external_urls: string }) => void;
   onTrackClick?: (track: TrackMetadata) => void;
   onBack?: boolean;
-}>();
+}>(), {
+  searchQuery: '',
+  sortBy: 'title-asc',
+  failedTracks: () => new Set(),
+  skippedTracks: () => new Set(),
+  downloadingTrack: null,
+  bulkDownloadType: null,
+  downloadProgress: 0,
+  currentDownloadInfo: null,
+  currentPage: 1,
+  itemsPerPage: 100,
+  downloadedLyrics: () => new Set(),
+  failedLyrics: () => new Set(),
+  skippedLyrics: () => new Set(),
+  downloadingLyricsTrack: null,
+  downloadedCovers: () => new Set(),
+  failedCovers: () => new Set(),
+  skippedCovers: () => new Set(),
+  downloadingCoverTrack: null,
+});
 
 defineEmits([
   'searchChange','sortChange','toggleTrack','toggleSelectAll','downloadTrack','downloadLyrics','downloadCover',

@@ -70,13 +70,22 @@ impl MusicBrainzClient {
     }
 
     async fn wait_for_slot(&self) {
-        let mut last_req = MB_LAST_REQUEST.lock().unwrap();
-        let elapsed = last_req.elapsed();
-        let min_interval = Duration::from_millis(1100);
+        let sleep_duration = {
+            let last_req = MB_LAST_REQUEST.lock().unwrap();
+            let elapsed = last_req.elapsed();
+            let min_interval = Duration::from_millis(1100);
+            if elapsed < min_interval {
+                Some(min_interval - elapsed)
+            } else {
+                None
+            }
+        };
 
-        if elapsed < min_interval {
-            tokio::time::sleep(min_interval - elapsed).await;
+        if let Some(d) = sleep_duration {
+            tokio::time::sleep(d).await;
         }
+        
+        let mut last_req = MB_LAST_REQUEST.lock().unwrap();
         *last_req = Instant::now();
     }
 
@@ -105,24 +114,27 @@ impl MusicBrainzClient {
         }
 
         // 2. Check In-Flight
-        let mut rx = {
+        let action = {
             let mut in_flight = MB_IN_FLIGHT.lock().unwrap();
             if let Some(tx) = in_flight.get(&cache_key) {
-                tx.subscribe()
+                Some(tx.subscribe())
             } else {
                 let (tx, rx) = tokio::sync::broadcast::channel(1);
                 in_flight.insert(cache_key.clone(), tx);
-                // Return our own receiver, but we are the one who will perform the fetch
-                drop(in_flight);
-                return self.execute_fetch_and_notify(isrc, use_single, cache_key).await;
+                None // None means we need to execute the fetch
             }
         };
 
-        // If we are here, we are a follower. Wait for the primary.
-        match rx.recv().await {
-            Ok(Ok(genre)) => Ok(genre),
-            Ok(Err(e)) => Err(anyhow!(e)),
-            Err(_) => Err(anyhow!("In-flight request failed")),
+        if let Some(mut rx) = action {
+            // We are a follower. Wait for the primary.
+            match rx.recv().await {
+                Ok(Ok(genre)) => Ok(genre),
+                Ok(Err(e)) => Err(anyhow!(e)),
+                Err(_) => Err(anyhow!("In-flight request failed")),
+            }
+        } else {
+            // We are the primary.
+            self.execute_fetch_and_notify(isrc, use_single, cache_key).await
         }
     }
 

@@ -32,3 +32,16 @@ export function buildClickableArtists(
         return { id: '', name, external_urls: '' };
     });
 }
+
+import type { TrackAvailability } from '../types/api';
+
+export function hasAvailabilityLinks(availability?: TrackAvailability): boolean {
+    if (!availability) {
+        return false;
+    }
+    const tidalUrl = availability.tidal_url?.trim() || "";
+    const qobuzUrl = availability.qobuz_url?.trim() || "";
+    const amazonUrl = availability.amazon_url?.trim() || "";
+    
+    return Boolean(tidalUrl || qobuzUrl || amazonUrl);
+}

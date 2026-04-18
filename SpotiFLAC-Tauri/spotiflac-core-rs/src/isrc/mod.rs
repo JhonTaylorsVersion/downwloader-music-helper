@@ -8,9 +8,9 @@ pub mod resolvers;
 pub mod spotify_id;
 pub mod totp;
 
-use resolvers::songlink::SongLinkResolver;
-use resolvers::songstats::SongStatsResolver;
-use resolvers::soundplate::SoundPlateResolver;
+pub use resolvers::songlink::SongLinkResolver;
+pub use resolvers::songstats::SongStatsResolver;
+pub use resolvers::soundplate::SoundPlateResolver;
 pub use cache::ISRCCache;
 use std::sync::Arc;
 
@@ -24,9 +24,9 @@ pub struct ResolvedLinks {
 
 pub struct LinkResolver {
     client: reqwest::Client,
-    songstats: SongStatsResolver,
-    soundplate: SoundPlateResolver,
-    songlink: SongLinkResolver,
+    pub songstats: SongStatsResolver,
+    pub soundplate: SoundPlateResolver,
+    pub songlink: SongLinkResolver,
     pub cache: Option<Arc<ISRCCache>>,
 }
 

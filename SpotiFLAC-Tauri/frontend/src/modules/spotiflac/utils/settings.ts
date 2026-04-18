@@ -3,16 +3,16 @@
  * All settings utilities, presets, and constants needed by SfSettingsPage and composables.
  */
 
-// Re-export types from the store so everything is consistent
+// Re-export types from the composable so everything is consistent
 export type {
   Settings,
   FontFamily,
   FolderPreset,
   FilenamePreset,
-} from '../stores/useSettingsStore';
+} from '../composables/useSettings';
 
-import type { Settings, FontFamily, FolderPreset, FilenamePreset } from '../stores/useSettingsStore';
-import { DEFAULT_SETTINGS } from '../stores/useSettingsStore';
+import type { Settings, FontFamily, FolderPreset, FilenamePreset } from '../composables/useSettings';
+import { DEFAULT_SETTINGS } from '../composables/useSettings';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -84,41 +84,9 @@ export const FONT_OPTIONS: { value: FontFamily; label: string; fontFamily: strin
   { value: "space-grotesk", label: "Space Grotesk", fontFamily: '"Space Grotesk", system-ui, sans-serif' },
 ];
 
-// ---------------------------------------------------------------------------
-// Template data type (used by AlbumView, PlaylistView)
-// ---------------------------------------------------------------------------
-
-export interface TemplateData {
-  artist?: string;
-  album?: string;
-  album_artist?: string;
-  title?: string;
-  track?: string;
-  disc?: string;
-  year?: string;
-  date?: string;
-  isrc?: string;
-  playlist?: string;
-}
-
-// ---------------------------------------------------------------------------
-// Template functions
-// ---------------------------------------------------------------------------
-
-export function parseTemplate(template: string, data: TemplateData): string {
-  if (!template) return '';
-  return template
-    .replace(/\{artist\}/g, data.artist ?? '')
-    .replace(/\{album\}/g, data.album ?? '')
-    .replace(/\{album_artist\}/g, data.album_artist ?? '')
-    .replace(/\{title\}/g, data.title ?? '')
-    .replace(/\{track\}/g, data.track ?? '')
-    .replace(/\{disc\}/g, data.disc ?? '')
-    .replace(/\{year\}/g, data.year ?? '')
-    .replace(/\{date\}/g, data.date ?? '')
-    .replace(/\{isrc\}/g, data.isrc ?? '')
-    .replace(/\{playlist\}/g, data.playlist ?? '');
-}
+import type { TemplateData } from '../types/settings';
+export { parseTemplate } from '../types/settings';
+export type { TemplateData };
 
 // ---------------------------------------------------------------------------
 // Theme / Font helpers (migrated from applyThemeMode / applyFont)

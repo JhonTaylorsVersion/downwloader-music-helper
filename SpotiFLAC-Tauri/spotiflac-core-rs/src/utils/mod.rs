@@ -3,6 +3,8 @@ pub mod scanner;
 pub mod ffmpeg;
 pub mod filename;
 pub mod validation;
+pub mod spotify;
+pub mod file_manager;
 pub mod analysis;
 pub mod metadata_formatter;
 pub mod assets;

@@ -1,45 +1,56 @@
-import { ref, watch, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, watch, unref, type Ref } from 'vue';
 
-export function useTypingEffect(texts: string[], typingSpeed: number = 50, deletingSpeed: number = 50, pauseDuration: number = 1500) {
-    const displayedText = ref('');
-    const isDeleting = ref(false);
-    const textIndex = ref(0);
-    let timer: ReturnType<typeof setTimeout>;
+export function useTypingEffect(stringsRef: string[] | Ref<string[]>, typeSpeed = 100, backSpeed = 50, delay = 2000) {
+  const text = ref('');
+  const stringIndex = ref(0);
+  const charIndex = ref(0);
+  const isDeleting = ref(false);
+  let timeoutId: any = null;
 
-    const tick = () => {
-        const currentText = texts[textIndex.value % texts.length];
+  const tick = () => {
+    const strings = unref(stringsRef);
+    if (!strings || strings.length === 0) return;
+    
+    const currentString = strings[stringIndex.value % strings.length];
+    
+    if (isDeleting.value) {
+      text.value = currentString.substring(0, charIndex.value - 1);
+      charIndex.value--;
+    } else {
+      text.value = currentString.substring(0, charIndex.value + 1);
+      charIndex.value++;
+    }
 
-        if (isDeleting.value) {
-            displayedText.value = displayedText.value.substring(0, displayedText.value.length - 1);
-        } else {
-            displayedText.value = currentText.substring(0, displayedText.value.length + 1);
-        }
+    let speed = isDeleting.value ? backSpeed : typeSpeed;
 
-        if (!isDeleting.value && displayedText.value === currentText) {
-            timer = setTimeout(() => {
-                isDeleting.value = true;
-                tick();
-            }, pauseDuration);
-        } else if (isDeleting.value && displayedText.value === '') {
-            isDeleting.value = false;
-            textIndex.value = (textIndex.value + 1) % texts.length;
-            timer = setTimeout(tick, typingSpeed);
-        } else {
-            timer = setTimeout(tick, isDeleting.value ? deletingSpeed : typingSpeed);
-        }
-    };
+    if (!isDeleting.value && charIndex.value === currentString.length) {
+      speed = delay;
+      isDeleting.value = true;
+    } else if (isDeleting.value && charIndex.value === 0) {
+      isDeleting.value = false;
+      stringIndex.value = (stringIndex.value + 1) % strings.length;
+      speed = 500;
+    }
 
-    watch(() => texts, () => {
-        clearTimeout(timer);
-        displayedText.value = '';
-        isDeleting.value = false;
-        textIndex.value = 0;
-        tick();
-    }, { immediate: true, deep: true });
+    timeoutId = setTimeout(tick, speed);
+  };
 
-    onUnmounted(() => {
-        clearTimeout(timer);
-    });
+  // Reset if the strings change
+  watch(() => unref(stringsRef), () => {
+    if (timeoutId) clearTimeout(timeoutId);
+    stringIndex.value = 0;
+    charIndex.value = 0;
+    isDeleting.value = false;
+    tick();
+  }, { deep: true });
 
-    return displayedText;
+  onMounted(() => {
+    tick();
+  });
+
+  onUnmounted(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  });
+
+  return text;
 }

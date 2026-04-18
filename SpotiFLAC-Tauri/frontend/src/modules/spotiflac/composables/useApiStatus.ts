@@ -21,5 +21,6 @@ export function useApiStatus() {
         state,
         sources: API_SOURCES,
         refreshAll: () => checkAllApiStatuses(true),
+        ensureApiStatusCheckStarted
     };
 }

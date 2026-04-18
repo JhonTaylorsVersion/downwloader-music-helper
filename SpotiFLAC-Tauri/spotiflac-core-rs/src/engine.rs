@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 pub struct SpotiFLACEngine {
     spotify: SpotifyMetadataClient,
-    resolver: LinkResolver,
+    pub resolver: LinkResolver,
     tidal: TidalProvider,
     qobuz: QobuzProvider,
     amazon: AmazonProvider,
@@ -54,6 +54,120 @@ impl SpotiFLACEngine {
             progress: Arc::new(ProgressManager::new()),
             assets: crate::utils::assets::AssetsDownloader::new(),
         }
+    }
+
+    /// Delegates to HistoryManager::add_fetch_item — used by add_fetch_history command
+    pub fn add_fetch_history(&self, item: crate::storage::history::FetchHistoryItem) -> anyhow::Result<()> {
+        if let Some(h) = &self.history {
+            h.add_fetch_item(item)
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn get_fetch_history(&self) -> anyhow::Result<Vec<crate::storage::history::FetchHistoryItem>> {
+        if let Some(h) = &self.history {
+            h.get_fetch_history()
+        } else {
+            Ok(vec![])
+        }
+    }
+
+    pub fn clear_fetch_history_by_type(&self, item_type: &str) -> anyhow::Result<()> {
+        if let Some(h) = &self.history {
+            h.clear_fetch_history_by_type(item_type)
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn delete_fetch_history_item(&self, id: &str) -> anyhow::Result<()> {
+        if let Some(h) = &self.history {
+            h.delete_fetch_item(id)
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Checks if a track has been downloaded before — used by check_files_existence command
+    pub fn is_already_downloaded(&self, spotify_id: &str) -> Option<String> {
+        self.history.as_ref()?.is_already_downloaded(spotify_id)
+    }
+
+    /// Returns full download history — used by get_download_history command
+    pub fn get_download_history(&self) -> anyhow::Result<Vec<crate::storage::history::HistoryItem>> {
+        if let Some(h) = &self.history {
+            h.get_download_history()
+        } else {
+            Ok(vec![])
+        }
+    }
+
+    pub fn clear_download_history(&self) -> anyhow::Result<()> {
+        if let Some(h) = &self.history {
+            h.clear_download_history()
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn delete_download_history_item(&self, id: &str) -> anyhow::Result<()> {
+        if let Some(h) = &self.history {
+            h.delete_download_item(id)
+        } else {
+            Ok(())
+        }
+    }
+
+    pub async fn get_streaming_urls(&self, spotify_id: &str, region: Option<&str>) -> Result<crate::models::SongLinkData> {
+        let spotify_url = format!("https://open.spotify.com/track/{}", spotify_id);
+        let data = self.resolver.songlink.resolve_from_spotify(&spotify_url, region).await?;
+        Ok(crate::models::SongLinkData {
+            isrc: data.isrc,
+            tidal_url: data.tidal_url,
+            amazon_url: data.amazon_url,
+            deezer_url: data.deezer_url,
+        })
+    }
+
+    pub async fn check_track_availability(&self, spotify_id: &str) -> Result<crate::models::TrackAvailability> {
+        let spotify_url = format!("https://open.spotify.com/track/{}", spotify_id);
+        let links = self.resolver.resolve_links(&spotify_url).await?;
+        
+        let mut availability = crate::models::TrackAvailability {
+            spotify_id: spotify_id.to_string(),
+            tidal: links.tidal_url.is_some(),
+            amazon: links.amazon_url.is_some(),
+            qobuz: false, // Default
+            deezer: false, // Default (SongLink check below)
+            tidal_url: links.tidal_url,
+            amazon_url: links.amazon_url,
+            qobuz_url: None,
+            deezer_url: None,
+        };
+
+        // Get Deezer/Qobuz from SongLink direct call to get all platforms
+        if let Ok(data) = self.resolver.songlink.resolve_from_spotify(&spotify_url, None).await {
+            availability.deezer = data.deezer_url.is_some();
+            availability.deezer_url = data.deezer_url;
+            
+            // If ISRC was missing in links, use from here
+            let isrc = if links.isrc == "UNKNOWN" { 
+                data.isrc.unwrap_or_else(|| "UNKNOWN".to_string()) 
+            } else { 
+                links.isrc 
+            };
+
+            // Qobuz search by ISRC
+            if isrc != "UNKNOWN" {
+                if let Ok(qobuz_id) = self.qobuz.search_qobuz_id_from_isrc_for_availability(&isrc).await {
+                    availability.qobuz = true;
+                    availability.qobuz_url = Some(format!("https://www.qobuz.com/track/{}", qobuz_id));
+                }
+            }
+        }
+
+        Ok(availability)
     }
 
     pub async fn download_track(&self, url: &str, config: &AppConfig, tidal_id_override: Option<String>) -> Result<PathBuf> {

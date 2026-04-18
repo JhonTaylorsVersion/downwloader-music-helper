@@ -1,432 +1,498 @@
+<script setup lang="ts">
+import { ref, reactive, watch, onMounted } from "vue";
+import {
+  useSettings,
+  type FolderPreset,
+  type FilenamePreset,
+  type FontFamily,
+} from "../composables/useSettings";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  FolderOpen,
+  Save,
+  RotateCcw,
+  Info,
+  Monitor,
+  FolderCog,
+  Settings2,
+  Music,
+  Database,
+  ShieldCheck,
+  Languages,
+  Palette,
+  ExternalLink,
+  FolderCheck,
+} from "lucide-vue-next";
+import { invoke } from "@tauri-apps/api/core";
+import { toast } from "vue-sonner";
+import SfPlatformIcons from "./SfPlatformIcons.vue";
+
+const { settings, save, reset, initialized } = useSettings();
+
+// Local temporary state for unsaved changes
+const tempSettings = reactive({ ...settings.value });
+
+// Watch for external changes to settings
+watch(
+  settings,
+  (newVal) => {
+    Object.assign(tempSettings, newVal);
+  },
+  { deep: true },
+);
+
+const hasUnsavedChanges = ref(false);
+watch(
+  tempSettings,
+  () => {
+    hasUnsavedChanges.value =
+      JSON.stringify(tempSettings) !== JSON.stringify(settings.value);
+  },
+  { deep: true },
+);
+
+const handleSave = async () => {
+  await save({ ...tempSettings });
+  hasUnsavedChanges.value = false;
+  toast.success("Settings saved successfully");
+};
+
+const handleReset = async () => {
+  await reset();
+  Object.assign(tempSettings, settings.value);
+  hasUnsavedChanges.value = false;
+  toast.success("Settings reset to defaults");
+};
+
+const pickFolder = async () => {
+  try {
+    const selected = await invoke<string | null>("select_folder");
+    if (selected) {
+      tempSettings.downloadPath = selected;
+    }
+  } catch (err) {
+    console.error(err);
+  }
+};
+
+const openConfigFolder = async () => {
+  await invoke("open_config_folder");
+};
+
+import {
+  FOLDER_PRESETS,
+  FILENAME_PRESETS,
+  FONT_OPTIONS,
+} from "../utils/settings";
+
+const QUALITY_DESC = {
+  tidal: {
+    LOSSLESS: "16-bit FLAC (CD Quality)",
+    HI_RES_LOSSLESS: "24-bit FLAC (High Res)",
+  },
+  qobuz: {
+    "6": "MP3 320kbps",
+    "7": "16-bit FLAC",
+    "27": "24-bit FLAC",
+  },
+};
+</script>
+
 <template>
-  <!-- Mirrors SettingsPage.tsx 1:1 -->
-  <div class="sf-settings-page">
+  <div class="h-full flex flex-col space-y-6 max-w-[1000px] mx-auto pb-20">
     <!-- Header -->
-    <div class="sf-settings-header">
-      <h1 class="sf-title">Settings</h1>
-      <div class="sf-header-actions">
-        <button class="sf-btn-outline" @click="handleOpenConfigFolder">
-          <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-          Open Config Folder
-        </button>
-        <button class="sf-btn-outline" @click="showResetConfirm = true">
-          <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.51"/></svg>
-          Reset to Default
-        </button>
-        <button class="sf-btn-primary" @click="handleSave">
-          <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13"/><polyline points="7 3 7 8 15 8"/></svg>
+    <div
+      class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b pb-6 sticky top-0 bg-background/95 backdrop-blur z-20"
+    >
+      <div class="space-y-1">
+        <h1 class="text-3xl font-bold tracking-tight">Settings</h1>
+        <p class="text-muted-foreground">
+          Configure your downloader, quality preferences, and UI appearance.
+        </p>
+      </div>
+      <div class="flex items-center gap-2">
+        <Button
+          variant="outline"
+          @click="handleReset"
+          class="gap-2 h-10 border-muted-foreground/20"
+        >
+          <RotateCcw class="h-4 w-4" />
+          Reset
+        </Button>
+        <Button
+          @click="handleSave"
+          :disabled="!hasUnsavedChanges"
+          :class="[
+            'gap-2 h-10 px-6 shadow-lg transition-all duration-300',
+            hasUnsavedChanges
+              ? 'bg-primary shadow-primary/20 scale-100'
+              : 'bg-muted text-muted-foreground scale-95 opacity-50',
+          ]"
+        >
+          <Save class="h-4 w-4" />
           Save Changes
-        </button>
+        </Button>
       </div>
     </div>
 
-    <!-- Tabs -->
-    <div class="sf-tabs-bar">
-      <button class="sf-tab" :class="{ 'sf-tab--active': activeTab === 'general' }" @click="activeTab = 'general'">
-        <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-        General
-      </button>
-      <button class="sf-tab" :class="{ 'sf-tab--active': activeTab === 'files' }" @click="activeTab = 'files'">
-        <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-        File Management
-      </button>
-      <button class="sf-tab" :class="{ 'sf-tab--active': activeTab === 'api' }" @click="activeTab = 'api'">
-        <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-        Status
-      </button>
-    </div>
-
-    <!-- Tab bodies -->
-    <div class="sf-tab-body">
-      <!-- General Tab -->
-      <div v-if="activeTab === 'general'" class="sf-grid-2">
-        <div class="sf-section">
-          <!-- Download Path -->
-          <div class="sf-field">
-            <label class="sf-label" for="download-path">Download Path</label>
-            <div class="sf-input-row">
-              <input id="download-path" class="sf-input" :value="tempSettings.downloadPath" @input="update('downloadPath', ($event.target as HTMLInputElement).value)" placeholder="C:\Users\YourUsername\Music" />
-              <button class="sf-btn-primary" @click="handleBrowseFolder">
-                <svg class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                Browse
-              </button>
-            </div>
-          </div>
-
-          <!-- Theme Mode -->
-          <div class="sf-field">
-            <label class="sf-label" for="theme-mode">Mode</label>
-            <select id="theme-mode" class="sf-select" :value="tempSettings.themeMode" @change="update('themeMode', ($event.target as HTMLSelectElement).value as any)">
-              <option value="auto">Auto</option>
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
-            </select>
-          </div>
-
-          <!-- Accent Theme -->
-          <div class="sf-field">
-            <label class="sf-label" for="theme">Accent</label>
-            <select id="theme" class="sf-select" :value="tempSettings.theme" @change="update('theme', ($event.target as HTMLSelectElement).value)">
-              <option v-for="t in themes" :key="t.name" :value="t.name">{{ t.label }}</option>
-            </select>
-          </div>
-
-          <!-- Font -->
-          <div class="sf-field">
-            <label class="sf-label" for="font">Font</label>
-            <select id="font" class="sf-select" :value="tempSettings.fontFamily" @change="update('fontFamily', ($event.target as HTMLSelectElement).value as any)">
-              <option v-for="font in FONT_OPTIONS" :key="font.value" :value="font.value">{{ font.label }}</option>
-            </select>
-          </div>
-
-          <!-- Sound Effects toggle -->
-          <div class="sf-toggle-row">
-            <input id="sfx-enabled" type="checkbox" class="sf-toggle" :checked="tempSettings.sfxEnabled" @change="update('sfxEnabled', ($event.target as HTMLInputElement).checked)" />
-            <label for="sfx-enabled" class="sf-toggle-label">Sound Effects</label>
-          </div>
+    <div v-if="initialized" class="space-y-10 animate-in fade-in duration-700">
+      <!-- Download Location -->
+      <section class="space-y-4">
+        <div class="flex items-center gap-2 text-primary">
+          <FolderCog class="h-5 w-5" />
+          <h2 class="text-lg font-bold">Storage & Paths</h2>
         </div>
+        <Card>
+          <CardContent class="pt-6 space-y-4">
+            <div class="space-y-2">
+              <Label>Default Download Path</Label>
+              <div class="flex gap-2">
+                <Input
+                  v-model="tempSettings.downloadPath"
+                  placeholder="C:\Users\...\Music"
+                  class="font-mono text-sm border-muted-foreground/20"
+                />
+                <Button variant="secondary" @click="pickFolder" class="gap-2">
+                  <FolderOpen class="h-4 w-4" />
+                  Browse
+                </Button>
+              </div>
+              <p
+                class="text-[10px] text-muted-foreground uppercase font-bold tracking-widest mt-1"
+              >
+                This is where all your synced music will be stored.
+              </p>
+            </div>
+            <Separator />
+            <div class="flex items-center justify-between">
+              <div class="space-y-0.5">
+                <Label>Config Directory</Label>
+                <p class="text-xs text-muted-foreground">
+                  Manage databases, logs, and persistent state files.
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                @click="openConfigFolder"
+                class="gap-2 text-primary hover:bg-primary/10"
+              >
+                <ExternalLink class="h-3.5 w-3.5" />
+                Open Config Folder
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </section>
 
-        <div class="sf-section">
-          <!-- Link Resolver -->
-          <div class="sf-field">
-            <label class="sf-label" for="link-resolver">Link Resolver</label>
-            <div class="sf-input-row">
-              <select id="link-resolver" class="sf-select sf-select--fit" :value="tempSettings.linkResolver" @change="update('linkResolver', ($event.target as HTMLSelectElement).value as any)">
-                <option value="songlink">Songlink</option>
-                <option value="songstats">Songstats</option>
-              </select>
-              <div class="sf-toggle-row">
-                <input id="resolver-fallback" type="checkbox" class="sf-toggle" :checked="tempSettings.allowResolverFallback" @change="update('allowResolverFallback', ($event.target as HTMLInputElement).checked)" />
-                <label for="resolver-fallback" class="sf-toggle-label">Allow Fallback</label>
+      <!-- Provider Settings -->
+      <section class="space-y-4">
+        <div class="flex items-center gap-2 text-primary">
+          <Database class="h-5 w-5" />
+          <h2 class="text-lg font-bold">Quality & Providers</h2>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- Tidal -->
+          <Card class="border-l-4 border-l-black">
+            <CardHeader class="pb-2">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <SfPlatformIcons platform="tidal" class="h-5 w-5" />
+                  <CardTitle class="text-base font-bold">Tidal</CardTitle>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent class="space-y-4">
+              <div class="space-y-2">
+                <Label class="text-xs font-bold text-muted-foreground"
+                  >Max Download Quality</Label
+                >
+                <Select v-model="tempSettings.tidalQuality">
+                  <SelectTrigger class="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="LOSSLESS">Lossless (CD)</SelectItem>
+                    <SelectItem value="HI_RES_LOSSLESS"
+                      >Hi-Res Lossless (MQA/FLAC)</SelectItem
+                    >
+                  </SelectContent>
+                </Select>
+                <p class="text-[11px] text-muted-foreground italic">
+                  {{
+                    QUALITY_DESC.tidal[
+                      tempSettings.tidalQuality as keyof typeof QUALITY_DESC.tidal
+                    ]
+                  }}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <!-- Qobuz -->
+          <Card class="border-l-4 border-l-blue-500">
+            <CardHeader class="pb-2">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <SfPlatformIcons platform="qobuz" class="h-5 w-5" />
+                  <CardTitle class="text-base font-bold">Qobuz</CardTitle>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent class="space-y-4">
+              <div class="space-y-2">
+                <Label class="text-xs font-bold text-muted-foreground"
+                  >Max Download Quality</Label
+                >
+                <Select v-model="tempSettings.qobuzQuality">
+                  <SelectTrigger class="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="6">MP3 320kbps</SelectItem>
+                    <SelectItem value="7">Lossless (16-bit)</SelectItem>
+                    <SelectItem value="27">Hi-Res (24-bit)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p class="text-[11px] text-muted-foreground italic">
+                  {{
+                    QUALITY_DESC.qobuz[
+                      tempSettings.qobuzQuality as keyof typeof QUALITY_DESC.qobuz
+                    ]
+                  }}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </section>
+
+      <!-- Engine & Metadata -->
+      <section class="space-y-4">
+        <div class="flex items-center gap-2 text-primary">
+          <Settings2 class="h-5 w-5" />
+          <h2 class="text-lg font-bold">Downloader Engine</h2>
+        </div>
+        <Card>
+          <CardContent class="pt-6 space-y-6">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-8">
+              <div class="space-y-4">
+                <div class="flex items-center justify-between">
+                  <div class="space-y-0.5">
+                    <Label>Embed Lyrics</Label>
+                    <p class="text-xs text-muted-foreground">
+                      Automatically write synchronized lyrics to file tags.
+                    </p>
+                  </div>
+                  <Switch v-model="tempSettings.embedLyrics" />
+                </div>
+                <div class="flex items-center justify-between">
+                  <div class="space-y-0.5">
+                    <Label>Embed Genre</Label>
+                    <p class="text-xs text-muted-foreground">
+                      Enrich tracks with high-accuracy genres from MusicBrainz.
+                    </p>
+                  </div>
+                  <Switch v-model="tempSettings.embedGenre" />
+                </div>
+              </div>
+              <div class="space-y-4">
+                <div class="flex items-center justify-between">
+                  <div class="space-y-0.5">
+                    <Label>Embed 1:1 Cover</Label>
+                    <p class="text-xs text-muted-foreground">
+                      Inject maximum resolution album cover into tracks.
+                    </p>
+                  </div>
+                  <Switch v-model="tempSettings.embedMaxQualityCover" />
+                </div>
+                <div class="flex items-center justify-between">
+                  <div class="space-y-0.5">
+                    <Label>Create M3U8 Playlist</Label>
+                    <p class="text-xs text-muted-foreground">
+                      Generate playlist files for local library management.
+                    </p>
+                  </div>
+                  <Switch v-model="tempSettings.createM3u8File" />
+                </div>
               </div>
             </div>
-          </div>
 
-          <!-- Source -->
-          <div class="sf-field">
-            <label class="sf-label" for="downloader">Source</label>
-            <div class="sf-input-row sf-wrap">
-              <select id="downloader" class="sf-select sf-select--fit" :value="tempSettings.downloader" @change="update('downloader', ($event.target as HTMLSelectElement).value as any)">
-                <option value="auto">Auto</option>
-                <option value="tidal">Tidal</option>
-                <option value="qobuz">Qobuz</option>
-                <option value="amazon">Amazon Music</option>
-              </select>
+            <Separator />
 
-              <!-- Auto order + quality -->
-              <template v-if="tempSettings.downloader === 'auto'">
-                <select class="sf-select sf-select--fit" :value="tempSettings.autoOrder || 'tidal-qobuz-amazon'" @change="update('autoOrder', ($event.target as HTMLSelectElement).value as any)">
-                  <option value="tidal-qobuz-amazon">Tidal → Qobuz → Amazon</option>
-                  <option value="tidal-amazon-qobuz">Tidal → Amazon → Qobuz</option>
-                  <option value="qobuz-tidal-amazon">Qobuz → Tidal → Amazon</option>
-                  <option value="qobuz-amazon-tidal">Qobuz → Amazon → Tidal</option>
-                  <option value="amazon-tidal-qobuz">Amazon → Tidal → Qobuz</option>
-                  <option value="amazon-qobuz-tidal">Amazon → Qobuz → Tidal</option>
-                  <option value="tidal-qobuz">Tidal → Qobuz</option>
-                  <option value="tidal-amazon">Tidal → Amazon</option>
-                  <option value="qobuz-tidal">Qobuz → Tidal</option>
-                  <option value="qobuz-amazon">Qobuz → Amazon</option>
-                  <option value="amazon-tidal">Amazon → Tidal</option>
-                  <option value="amazon-qobuz">Amazon → Qobuz</option>
-                </select>
-                <select class="sf-select sf-select--fit" :value="tempSettings.autoQuality || '16'" @change="update('autoQuality', ($event.target as HTMLSelectElement).value as any)">
-                  <option value="16">16-bit/44.1kHz</option>
-                  <option value="24">24-bit/48kHz</option>
-                </select>
-              </template>
-
-              <!-- Tidal quality -->
-              <select v-if="tempSettings.downloader === 'tidal'" class="sf-select sf-select--fit" :value="tempSettings.tidalQuality" @change="update('tidalQuality', ($event.target as HTMLSelectElement).value as any)">
-                <option value="LOSSLESS">16-bit/44.1kHz</option>
-                <option value="HI_RES_LOSSLESS">24-bit/48kHz</option>
-              </select>
-
-              <!-- Qobuz quality -->
-              <select v-if="tempSettings.downloader === 'qobuz'" class="sf-select sf-select--fit" :value="tempSettings.qobuzQuality" @change="update('qobuzQuality', ($event.target as HTMLSelectElement).value as any)">
-                <option value="6">16-bit/44.1kHz</option>
-                <option value="27">24-bit/48kHz - 192kHz</option>
-              </select>
-
-              <!-- Amazon label -->
-              <span v-if="tempSettings.downloader === 'amazon'" class="sf-quality-label">16-bit - 24-bit/44.1kHz - 192kHz</span>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-8">
+              <div class="space-y-2">
+                <Label>Folder Structure</Label>
+                <Select v-model="tempSettings.folderPreset">
+                  <SelectTrigger class="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem
+                      v-for="(v, k) in FOLDER_PRESETS"
+                      :key="k"
+                      :value="k"
+                      >{{ v.label }}</SelectItem
+                    >
+                  </SelectContent>
+                </Select>
+              </div>
+              <div class="space-y-2">
+                <Label>Filename Convention</Label>
+                <Select v-model="tempSettings.filenamePreset">
+                  <SelectTrigger class="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem
+                      v-for="(v, k) in FILENAME_PRESETS"
+                      :key="k"
+                      :value="k"
+                      >{{ v.label }}</SelectItem
+                    >
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
+          </CardContent>
+        </Card>
+      </section>
 
-            <!-- Quality fallback toggle -->
-            <div v-if="showFallbackOption" class="sf-toggle-row mt-2">
-              <input id="allow-fallback" type="checkbox" class="sf-toggle" :checked="tempSettings.allowFallback" @change="update('allowFallback', ($event.target as HTMLInputElement).checked)" />
-              <label for="allow-fallback" class="sf-toggle-label">Allow Quality Fallback (16-bit)</label>
-            </div>
-          </div>
-
-          <div class="sf-divider" />
-
-          <!-- Embed toggles -->
-          <div class="sf-toggle-row">
-            <input id="embed-lyrics" type="checkbox" class="sf-toggle" :checked="tempSettings.embedLyrics" @change="update('embedLyrics', ($event.target as HTMLInputElement).checked)" />
-            <label for="embed-lyrics" class="sf-toggle-label">Embed Lyrics</label>
-          </div>
-          <div class="sf-toggle-row">
-            <input id="embed-cover" type="checkbox" class="sf-toggle" :checked="tempSettings.embedMaxQualityCover" @change="update('embedMaxQualityCover', ($event.target as HTMLInputElement).checked)" />
-            <label for="embed-cover" class="sf-toggle-label">Embed Max Quality Cover</label>
-          </div>
-          <div class="sf-toggle-row">
-            <input id="embed-genre" type="checkbox" class="sf-toggle" :checked="tempSettings.embedGenre" @change="update('embedGenre', ($event.target as HTMLInputElement).checked)" />
-            <label for="embed-genre" class="sf-toggle-label">Embed Genre</label>
-          </div>
-          <div v-if="tempSettings.embedGenre" class="sf-toggle-row">
-            <input id="use-single-genre" type="checkbox" class="sf-toggle" :checked="tempSettings.useSingleGenre" @change="update('useSingleGenre', ($event.target as HTMLInputElement).checked)" />
-            <label for="use-single-genre" class="sf-toggle-label">Use Single Genre</label>
-          </div>
+      <!-- Appearance -->
+      <section class="space-y-4">
+        <div class="flex items-center gap-2 text-primary">
+          <Palette class="h-5 w-5" />
+          <h2 class="text-lg font-bold">Aesthetics & UI</h2>
         </div>
-      </div>
+        <Card>
+          <CardContent class="pt-6 space-y-6">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-8">
+              <div class="space-y-2">
+                <Label>Theme Mode</Label>
+                <div class="flex p-1 bg-muted rounded-lg gap-1">
+                  <button
+                    @click="tempSettings.themeMode = 'light'"
+                    :class="[
+                      'flex-1 px-3 py-1.5 rounded-md text-xs font-bold transition-all',
+                      tempSettings.themeMode === 'light'
+                        ? 'bg-background shadow text-primary'
+                        : 'text-muted-foreground',
+                    ]"
+                  >
+                    LIGHT
+                  </button>
+                  <button
+                    @click="tempSettings.themeMode = 'dark'"
+                    :class="[
+                      'flex-1 px-3 py-1.5 rounded-md text-xs font-bold transition-all',
+                      tempSettings.themeMode === 'dark'
+                        ? 'bg-background shadow text-primary'
+                        : 'text-muted-foreground',
+                    ]"
+                  >
+                    DARK
+                  </button>
+                  <button
+                    @click="tempSettings.themeMode = 'auto'"
+                    :class="[
+                      'flex-1 px-3 py-1.5 rounded-md text-xs font-bold transition-all',
+                      tempSettings.themeMode === 'auto'
+                        ? 'bg-background shadow text-primary'
+                        : 'text-muted-foreground',
+                    ]"
+                  >
+                    SYSTEM
+                  </button>
+                </div>
+              </div>
 
-      <!-- File Management Tab -->
-      <div v-if="activeTab === 'files'" class="sf-grid-2">
-        <div class="sf-section">
-          <!-- Folder structure -->
-          <div class="sf-field">
-            <label class="sf-label">Folder Structure</label>
-            <div class="sf-input-row">
-              <select class="sf-select sf-select--fit" :value="tempSettings.folderPreset" @change="onFolderPresetChange(($event.target as HTMLSelectElement).value as any)">
-                <option v-for="[key, { label }] in Object.entries(FOLDER_PRESETS)" :key="key" :value="key">{{ label }}</option>
-              </select>
-              <input v-if="tempSettings.folderPreset === 'custom'" class="sf-input" :value="tempSettings.folderTemplate" @input="update('folderTemplate', ($event.target as HTMLInputElement).value)" placeholder="{artist}/{album}" />
+              <div class="space-y-2">
+                <Label>Typography</Label>
+                <Select v-model="tempSettings.fontFamily">
+                  <SelectTrigger class="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem
+                      v-for="f in FONT_OPTIONS"
+                      :key="f.value"
+                      :value="f.value"
+                      :style="{ fontFamily: f.fontFamily }"
+                    >
+                      {{ f.label.toUpperCase() }}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <p v-if="tempSettings.folderTemplate" class="sf-preview">Preview: <code>{{ folderPreview }}/</code></p>
-          </div>
 
-          <div class="sf-toggle-row">
-            <input id="playlist-folder" type="checkbox" class="sf-toggle" :checked="tempSettings.createPlaylistFolder" @change="update('createPlaylistFolder', ($event.target as HTMLInputElement).checked)" />
-            <label for="playlist-folder" class="sf-toggle-label">Playlist Folder</label>
-          </div>
-          <div class="sf-toggle-row">
-            <input id="owner-folder" type="checkbox" class="sf-toggle" :checked="tempSettings.playlistOwnerFolderName" @change="update('playlistOwnerFolderName', ($event.target as HTMLInputElement).checked)" />
-            <label for="owner-folder" class="sf-toggle-label">Playlist Owner Folder Name</label>
-          </div>
-          <div class="sf-toggle-row">
-            <input id="m3u8" type="checkbox" class="sf-toggle" :checked="tempSettings.createM3u8File" @change="update('createM3u8File', ($event.target as HTMLInputElement).checked)" />
-            <label for="m3u8" class="sf-toggle-label">Create M3U8 Playlist File</label>
-          </div>
-          <div class="sf-toggle-row">
-            <input id="first-artist" type="checkbox" class="sf-toggle" :checked="tempSettings.useFirstArtistOnly" @change="update('useFirstArtistOnly', ($event.target as HTMLInputElement).checked)" />
-            <label for="first-artist" class="sf-toggle-label">Use First Artist Only</label>
-          </div>
-          <div class="sf-toggle-row">
-            <input id="redownload-suffix" type="checkbox" class="sf-toggle" :checked="tempSettings.redownloadWithSuffix" @change="update('redownloadWithSuffix', ($event.target as HTMLInputElement).checked)" />
-            <label for="redownload-suffix" class="sf-toggle-label">Redownload With Suffix</label>
-          </div>
-        </div>
-
-        <div class="sf-section">
-          <!-- Filename Format -->
-          <div class="sf-field">
-            <label class="sf-label">Filename Format</label>
-            <div class="sf-input-row">
-              <select class="sf-select sf-select--fit" :value="tempSettings.filenamePreset" @change="onFilenamePresetChange(($event.target as HTMLSelectElement).value as any)">
-                <option v-for="[key, { label }] in Object.entries(FILENAME_PRESETS)" :key="key" :value="key">{{ label }}</option>
-              </select>
-              <input v-if="tempSettings.filenamePreset === 'custom'" class="sf-input" :value="tempSettings.filenameTemplate" @input="update('filenameTemplate', ($event.target as HTMLInputElement).value)" placeholder="{track}. {title}" />
+            <div class="flex items-center justify-between">
+              <div class="space-y-0.5">
+                <Label>SFX Engine</Label>
+                <p class="text-xs text-muted-foreground">
+                  Play subtle confirmation sounds for application events.
+                </p>
+              </div>
+              <Switch v-model="tempSettings.sfxEnabled" />
             </div>
-          </div>
+          </CardContent>
+        </Card>
+      </section>
 
-          <!-- Separator -->
-          <div class="sf-field">
-            <label class="sf-label">Separator</label>
-            <select class="sf-select sf-select--fit" :value="tempSettings.separator" @change="update('separator', ($event.target as HTMLSelectElement).value as any)">
-              <option value="comma">Comma (,)</option>
-              <option value="semicolon">Semicolon (;)</option>
-            </select>
-          </div>
-
-          <p v-if="tempSettings.filenameTemplate" class="sf-preview">Preview: <code>{{ filenamePreview }}.flac</code></p>
+      <!-- App Status & Debug -->
+      <section class="space-y-4">
+        <div class="flex items-center gap-2 text-primary">
+          <ShieldCheck class="h-5 w-5" />
+          <h2 class="text-lg font-bold">System Integrity</h2>
         </div>
-      </div>
-
-      <!-- API Status Tab -->
-      <SfApiStatusTab v-if="activeTab === 'api'" />
+        <Card>
+          <CardContent class="p-0">
+            <div
+              class="flex items-center p-6 justify-between flex-wrap gap-4 bg-muted/20"
+            >
+              <div class="space-y-1">
+                <h4 class="font-bold">Downloader Engine (Rust/Tauri)</h4>
+                <p class="text-xs text-muted-foreground font-mono">
+                  Build v2.1.0-stable | OpenSource License
+                </p>
+              </div>
+              <div class="flex items-center gap-2">
+                <div
+                  class="px-3 py-1 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-full text-[10px] font-bold uppercase tracking-wider"
+                >
+                  Core Reactive
+                </div>
+                <div
+                  class="px-3 py-1 bg-primary/10 text-primary border border-primary/20 rounded-full text-[10px] font-bold uppercase tracking-wider"
+                >
+                  FFmpeg Validated
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </section>
     </div>
 
-    <!-- Reset Confirmation Dialog -->
-    <div v-if="showResetConfirm" class="sf-dialog-backdrop" @click.self="showResetConfirm = false">
-      <div class="sf-dialog">
-        <h2 class="sf-dialog-title">Reset to Default?</h2>
-        <p class="sf-dialog-desc">This will reset all settings to their default values. Your custom configurations will be lost.</p>
-        <div class="sf-dialog-footer">
-          <button class="sf-btn-outline" @click="showResetConfirm = false">Cancel</button>
-          <button class="sf-btn-primary" @click="handleReset">Reset</button>
-        </div>
-      </div>
+    <div v-else class="flex flex-col items-center justify-center py-40 gap-4">
+      <div
+        class="h-10 w-10 border-4 border-primary border-t-transparent rounded-full animate-spin"
+      ></div>
+      <p class="text-sm font-medium text-muted-foreground animate-pulse">
+        Initializing settings engine...
+      </p>
     </div>
   </div>
 </template>
-
-<script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue';
-import SfApiStatusTab from './SfApiStatusTab.vue';
-import { useSettingsStore } from '../stores/useSettingsStore';
-import {
-  saveSettings, resetToDefaultSettings, getSettingsWithDefaults,
-  applyThemeMode, applyFont,
-  FONT_OPTIONS, FOLDER_PRESETS, FILENAME_PRESETS,
-  type Settings as SettingsType, type FolderPreset, type FilenamePreset,
-} from '../utils/settings';
-import { applyTheme, themes } from '../utils/themes';
-import { toastWithSound as toast } from '../utils/toast-with-sound';
-import { invoke } from '@tauri-apps/api/core';
-
-const props = defineProps<{
-  onUnsavedChangesChange?: (v: boolean) => void;
-  onResetRequest?: (fn: () => void) => void;
-}>();
-
-const settingsStore = useSettingsStore();
-const activeTab = ref<'general' | 'files' | 'api'>('general');
-const showResetConfirm = ref(false);
-
-const savedSettings = ref<SettingsType>(JSON.parse(JSON.stringify(settingsStore.settings)));
-const tempSettings = ref<SettingsType>(JSON.parse(JSON.stringify(settingsStore.settings)));
-
-const hasUnsavedChanges = computed(() => JSON.stringify(savedSettings.value) !== JSON.stringify(tempSettings.value));
-
-watch(hasUnsavedChanges, v => props.onUnsavedChangesChange?.(v));
-
-// Live-apply visual settings as temp changes
-watch([() => tempSettings.value.themeMode, () => tempSettings.value.theme, () => tempSettings.value.fontFamily], () => {
-  applyThemeMode(tempSettings.value.themeMode);
-  applyTheme(tempSettings.value.theme);
-  applyFont(tempSettings.value.fontFamily);
-});
-
-onMounted(async () => {
-  props.onResetRequest?.(() => {
-    const fresh = JSON.parse(JSON.stringify(settingsStore.settings));
-    tempSettings.value = fresh;
-    savedSettings.value = fresh;
-  });
-  if (!savedSettings.value.downloadPath) {
-    const defaults = await getSettingsWithDefaults();
-    savedSettings.value = defaults;
-    tempSettings.value = defaults;
-    await saveSettings(defaults);
-    settingsStore.loadSettings();
-  }
-});
-
-function update<K extends keyof SettingsType>(key: K, value: SettingsType[K]) {
-  tempSettings.value = { ...tempSettings.value, [key]: value };
-}
-
-async function handleSave() {
-  await saveSettings(tempSettings.value);
-  savedSettings.value = JSON.parse(JSON.stringify(tempSettings.value));
-  settingsStore.loadSettings();
-  toast.success('Settings saved');
-  props.onUnsavedChangesChange?.(false);
-}
-
-async function handleReset() {
-  const defaults = await resetToDefaultSettings();
-  tempSettings.value = defaults;
-  savedSettings.value = defaults;
-  applyThemeMode(defaults.themeMode);
-  applyTheme(defaults.theme);
-  applyFont(defaults.fontFamily);
-  settingsStore.loadSettings();
-  showResetConfirm.value = false;
-  toast.success('Settings reset to default');
-}
-
-async function handleBrowseFolder() {
-  try {
-    const selectedPath = await invoke<string>('select_folder', { currentPath: tempSettings.value.downloadPath || '' });
-    if (selectedPath?.trim()) update('downloadPath', selectedPath);
-  } catch (e) {
-    toast.error(`Error selecting folder: ${e}`);
-  }
-}
-
-async function handleOpenConfigFolder() {
-  try { await invoke('open_config_folder'); }
-  catch (e) { toast.error(`Failed to open config folder: ${e}`); }
-}
-
-const showFallbackOption = computed(() =>
-  (tempSettings.value.downloader === 'tidal' && tempSettings.value.tidalQuality === 'HI_RES_LOSSLESS') ||
-  (tempSettings.value.downloader === 'qobuz' && tempSettings.value.qobuzQuality === '27') ||
-  (tempSettings.value.downloader === 'auto' && tempSettings.value.autoQuality === '24'),
-);
-
-function onFolderPresetChange(value: FolderPreset) {
-  const preset = FOLDER_PRESETS[value];
-  tempSettings.value = {
-    ...tempSettings.value,
-    folderPreset: value,
-    folderTemplate: value === 'custom' ? tempSettings.value.folderTemplate || preset.template : preset.template,
-  };
-}
-function onFilenamePresetChange(value: FilenamePreset) {
-  const preset = FILENAME_PRESETS[value];
-  tempSettings.value = {
-    ...tempSettings.value,
-    filenamePreset: value,
-    filenameTemplate: value === 'custom' ? tempSettings.value.filenameTemplate || preset.template : preset.template,
-  };
-}
-
-const SEP = computed(() => tempSettings.value.separator === 'comma' ? 'Kendrick Lamar, SZA' : 'Kendrick Lamar; SZA');
-function applyPreviewVars(template: string): string {
-  return template
-    .replace(/\{artist\}/g, SEP.value)
-    .replace(/\{album\}/g, 'Black Panther')
-    .replace(/\{album_artist\}/g, 'Kendrick Lamar')
-    .replace(/\{title\}/g, 'All The Stars')
-    .replace(/\{track\}/g, '01')
-    .replace(/\{disc\}/g, '1')
-    .replace(/\{year\}/g, '2018')
-    .replace(/\{date\}/g, '2018-02-09')
-    .replace(/\{isrc\}/g, 'USUM71801234');
-}
-const folderPreview = computed(() => applyPreviewVars(tempSettings.value.folderTemplate || ''));
-const filenamePreview = computed(() => applyPreviewVars(tempSettings.value.filenameTemplate || ''));
-</script>
-
-<style scoped>
-.sf-settings-page { display: flex; flex-direction: column; gap: 1rem; height: 100%; }
-.sf-settings-header { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
-.sf-title { font-size: 1.5rem; font-weight: 700; }
-.sf-header-actions { display: flex; gap: 0.5rem; }
-.sf-tabs-bar { display: flex; gap: 0.5rem; border-bottom: 1px solid hsl(var(--border)); flex-shrink: 0; }
-.sf-tab { display: flex; align-items: center; gap: 0.5rem; padding: 0.375rem 0.75rem; font-size: 0.875rem; background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; color: hsl(var(--muted-foreground)); transition: color 0.15s; border-radius: 4px 4px 0 0; }
-.sf-tab:hover { color: hsl(var(--foreground)); background: hsl(var(--muted) / 0.3); }
-.sf-tab--active { border-bottom-color: hsl(var(--primary)); color: hsl(var(--foreground)); background: hsl(var(--muted) / 0.5); }
-.sf-tab-body { flex: 1; overflow-y: auto; padding-top: 1rem; }
-.sf-grid-2 { display: grid; grid-template-columns: 1fr; gap: 1.5rem; }
-@media (min-width: 768px) { .sf-grid-2 { grid-template-columns: repeat(2, 1fr); } }
-.sf-section { display: flex; flex-direction: column; gap: 1rem; }
-.sf-field { display: flex; flex-direction: column; gap: 0.375rem; }
-.sf-label { font-size: 0.875rem; font-weight: 500; }
-.sf-input-row { display: flex; gap: 0.5rem; align-items: center; }
-.sf-wrap { flex-wrap: wrap; }
-.sf-input { flex: 1; padding: 0.375rem 0.75rem; border: 1px solid hsl(var(--border)); border-radius: 6px; background: hsl(var(--background)); color: hsl(var(--foreground)); font-size: 0.875rem; outline: none; }
-.sf-input:focus { border-color: hsl(var(--primary)); }
-.sf-select { padding: 0.375rem 0.75rem; border: 1px solid hsl(var(--border)); border-radius: 6px; background: hsl(var(--background)); color: hsl(var(--foreground)); font-size: 0.875rem; cursor: pointer; outline: none; }
-.sf-select--fit { width: fit-content; }
-.sf-toggle-row { display: flex; align-items: center; gap: 0.75rem; }
-.sf-toggle { width: 1rem; height: 1rem; cursor: pointer; accent-color: hsl(var(--primary)); }
-.sf-toggle-label { font-size: 0.875rem; cursor: pointer; }
-.sf-quality-label { font-size: 0.875rem; padding: 0.375rem 0.75rem; border: 1px solid hsl(var(--border)); border-radius: 6px; background: hsl(var(--muted) / 0.3); color: hsl(var(--muted-foreground)); white-space: nowrap; }
-.sf-divider { border-top: 1px solid hsl(var(--border)); margin-top: 1rem; }
-.sf-preview { font-size: 0.75rem; color: hsl(var(--muted-foreground)); }
-.sf-preview code { font-family: monospace; }
-.mt-2 { margin-top: 0.5rem; }
-/* Buttons */
-.sf-btn-primary { display: flex; align-items: center; gap: 0.375rem; padding: 0.5rem 1rem; border-radius: 6px; border: none; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); cursor: pointer; font-size: 0.875rem; font-weight: 500; }
-.sf-btn-outline { display: flex; align-items: center; gap: 0.375rem; padding: 0.5rem 1rem; border-radius: 6px; border: 1px solid hsl(var(--border)); background: transparent; color: hsl(var(--foreground)); cursor: pointer; font-size: 0.875rem; transition: background 0.15s; }
-.sf-btn-outline:hover { background: hsl(var(--muted)); }
-/* Dialog */
-.sf-dialog-backdrop { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.5); }
-.sf-dialog { background: hsl(var(--background)); border: 1px solid hsl(var(--border)); border-radius: 0.5rem; padding: 1.5rem; max-width: 28rem; width: 100%; display: flex; flex-direction: column; gap: 1rem; }
-.sf-dialog-title { font-size: 1.125rem; font-weight: 700; }
-.sf-dialog-desc { font-size: 0.875rem; color: hsl(var(--muted-foreground)); }
-.sf-dialog-footer { display: flex; justify-content: flex-end; gap: 0.5rem; }
-</style>

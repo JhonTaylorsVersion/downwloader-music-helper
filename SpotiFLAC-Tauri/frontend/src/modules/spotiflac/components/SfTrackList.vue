@@ -141,18 +141,18 @@ import { usePreview } from '../composables/usePreview';
 import { buildClickableArtists, type ClickableArtist } from '../utils/artist-links';
 import type { TrackMetadata, TrackAvailability } from '../types/api';
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   tracks: TrackMetadata[];
-  searchQuery: string;
-  sortBy: string;
-  selectedTracks: string[];
-  downloadedTracks: Set<string>;
-  failedTracks: Set<string>;
-  skippedTracks: Set<string>;
-  downloadingTrack: string | null;
-  isDownloading: boolean;
-  currentPage: number;
-  itemsPerPage: number;
+  searchQuery?: string;
+  sortBy?: string;
+  selectedTracks?: string[];
+  downloadedTracks?: Set<string>;
+  failedTracks?: Set<string>;
+  skippedTracks?: Set<string>;
+  downloadingTrack?: string | null;
+  isDownloading?: boolean;
+  currentPage?: number;
+  itemsPerPage?: number;
   showCheckboxes?: boolean;
   hideAlbumColumn?: boolean;
   folderName?: string;
@@ -171,7 +171,26 @@ const props = defineProps<{
   onArtistClick?: (artist: { id: string; name: string; external_urls: string }) => void;
   onAlbumClick?: (album: { id: string; name: string; external_urls: string }) => void;
   onTrackClick?: (track: TrackMetadata) => void;
-}>();
+}>(), {
+  searchQuery: '',
+  sortBy: 'title-asc',
+  selectedTracks: () => [],
+  downloadedTracks: () => new Set(),
+  failedTracks: () => new Set(),
+  skippedTracks: () => new Set(),
+  downloadingTrack: null,
+  isDownloading: false,
+  currentPage: 1,
+  itemsPerPage: 100,
+  showCheckboxes: true,
+  hideAlbumColumn: false,
+  downloadedLyrics: () => new Set(),
+  failedLyrics: () => new Set(),
+  skippedLyrics: () => new Set(),
+  downloadedCovers: () => new Set(),
+  failedCovers: () => new Set(),
+  skippedCovers: () => new Set(),
+});
 
 const emit = defineEmits<{
   toggleTrack: [id: string];

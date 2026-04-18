@@ -11,15 +11,15 @@ export function useDownloadProgress() {
     const store = useDownloadStore();
 
     const progress = computed<DownloadProgressInfo>(() => {
-        const downloadingItems = store.queue.filter(item => item.status === 'Downloading');
+        const downloadingItems = store.queue.filter(item => item.status === 'downloading');
         const active = downloadingItems.length > 0;
         
         let totalSpeed = 0;
         let totalProgressMb = 0;
 
         for (const item of downloadingItems) {
-            totalSpeed += item.speed_mbps || 0;
-            totalProgressMb += item.progress_mb || 0;
+            totalSpeed += item.speed || 0;
+            totalProgressMb += item.progress || 0;
         }
 
         return {

@@ -15,15 +15,20 @@ name = "app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.5.6" }
+tauri-build = { version = "2.5.6", features = [] }
 
 [dependencies]
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
-tauri = { version = "2.10.3" }
+tauri = { version = "2.10.3", features = [] }
 tauri-plugin-log = "2"
 spotiflac-core-rs = { path = "../spotiflac-core-rs" }
 tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-fs = "2"
+# New dependencies needed by commands.rs
+base64 = "0.22"
+dirs = "5"
+chrono = "0.4"
+reqwest = { version = "0.12", features = ["json", "stream"] }

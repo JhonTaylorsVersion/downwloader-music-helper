@@ -36,20 +36,48 @@ pub struct ProgressUpdate {
     pub speed_mbps: f64,
 }
 
+/// Mirrors Go's DownloadQueueInfo struct exactly
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DownloadQueueInfo {
+    pub is_downloading: bool,
+    pub queue: Vec<DownloadItem>,
+    pub current_speed: f64,
+    pub total_downloaded: f64,
+    pub session_start_time: u64,
+    pub queued_count: usize,
+    pub completed_count: usize,
+    pub failed_count: usize,
+    pub skipped_count: usize,
+}
+
 pub trait ProgressHandler: Send + Sync {
     fn on_progress(&self, update: ProgressUpdate);
     fn on_status_change(&self, item_id: &str, status: DownloadStatus);
 }
 
+struct ProgressState {
+    queue: Vec<DownloadItem>,
+    is_downloading: bool,
+    current_speed: f64,
+    total_downloaded: f64,
+    session_start_time: u64,
+}
+
 pub struct ProgressManager {
-    queue: Arc<RwLock<Vec<DownloadItem>>>,
+    state: Arc<RwLock<ProgressState>>,
     handler: Arc<RwLock<Option<Box<dyn ProgressHandler>>>>,
 }
 
 impl ProgressManager {
     pub fn new() -> Self {
         Self {
-            queue: Arc::new(RwLock::new(Vec::new())),
+            state: Arc::new(RwLock::new(ProgressState {
+                queue: Vec::new(),
+                is_downloading: false,
+                current_speed: 0.0,
+                total_downloaded: 0.0,
+                session_start_time: 0,
+            })),
             handler: Arc::new(RwLock::new(None)),
         }
     }
@@ -60,8 +88,12 @@ impl ProgressManager {
     }
 
     pub fn add_to_queue(&self, id: String, track: String, artist: String, album: String, spotify_id: String) {
-        let mut queue = self.queue.write().unwrap();
-        queue.push(DownloadItem {
+        let mut state = self.state.write().unwrap();
+        if state.session_start_time == 0 {
+            state.session_start_time = SystemTime::now()
+                .duration_since(UNIX_EPOCH).unwrap().as_secs();
+        }
+        state.queue.push(DownloadItem {
             id: id.clone(),
             track_name: track,
             artist_name: artist,
@@ -76,6 +108,7 @@ impl ProgressManager {
             error_message: None,
             file_path: None,
         });
+        drop(state);
 
         let h_lock = self.handler.read().unwrap();
         if let Some(h) = &*h_lock {
@@ -84,65 +117,175 @@ impl ProgressManager {
     }
 
     pub fn start_item(&self, id: &str) {
-        let mut queue = self.queue.write().unwrap();
-        if let Some(item) = queue.iter_mut().find(|i| i.id == id) {
+        let mut state = self.state.write().unwrap();
+        state.is_downloading = true;
+        if let Some(item) = state.queue.iter_mut().find(|i| i.id == id) {
             item.status = DownloadStatus::Downloading;
             item.start_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-            
-            let h_lock = self.handler.read().unwrap();
-            if let Some(h) = &*h_lock {
-                h.on_status_change(id, DownloadStatus::Downloading);
-            }
+        }
+        drop(state);
+
+        let h_lock = self.handler.read().unwrap();
+        if let Some(h) = &*h_lock {
+            h.on_status_change(id, DownloadStatus::Downloading);
         }
     }
 
     pub fn update_progress(&self, id: &str, progress: f64, speed: f64) {
-        let mut queue = self.queue.write().unwrap();
-        if let Some(item) = queue.iter_mut().find(|i| i.id == id) {
+        let mut state = self.state.write().unwrap();
+        state.current_speed = speed;
+        if let Some(item) = state.queue.iter_mut().find(|i| i.id == id) {
             item.progress_mb = progress;
             item.speed_mbps = speed;
+        }
+        drop(state);
 
-            let h_lock = self.handler.read().unwrap();
-            if let Some(h) = &*h_lock {
-                h.on_progress(ProgressUpdate {
-                    item_id: id.to_string(),
-                    status: item.status.clone(),
-                    progress_mb: progress,
-                    speed_mbps: speed,
-                });
-            }
+        let h_lock = self.handler.read().unwrap();
+        if let Some(h) = &*h_lock {
+            h.on_progress(ProgressUpdate {
+                item_id: id.to_string(),
+                status: DownloadStatus::Downloading,
+                progress_mb: progress,
+                speed_mbps: speed,
+            });
         }
     }
 
     pub fn complete_item(&self, id: &str, file_path: String, final_size: f64) {
-        let mut queue = self.queue.write().unwrap();
-        if let Some(item) = queue.iter_mut().find(|i| i.id == id) {
+        let mut state = self.state.write().unwrap();
+        state.total_downloaded += final_size;
+        if let Some(item) = state.queue.iter_mut().find(|i| i.id == id) {
             item.status = DownloadStatus::Completed;
             item.end_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
             item.file_path = Some(file_path);
             item.progress_mb = final_size;
             item.total_size_mb = final_size;
             item.speed_mbps = 0.0;
+        }
+        // Check if all done
+        let all_done = state.queue.iter().all(|i| {
+            matches!(i.status, DownloadStatus::Completed | DownloadStatus::Failed | DownloadStatus::Skipped)
+        });
+        if all_done {
+            state.is_downloading = false;
+            state.current_speed = 0.0;
+        }
+        drop(state);
 
-            let h_lock = self.handler.read().unwrap();
-            if let Some(h) = &*h_lock {
-                h.on_status_change(id, DownloadStatus::Completed);
-            }
+        let h_lock = self.handler.read().unwrap();
+        if let Some(h) = &*h_lock {
+            h.on_status_change(id, DownloadStatus::Completed);
         }
     }
 
     pub fn fail_item(&self, id: &str, error: String) {
-        let mut queue = self.queue.write().unwrap();
-        if let Some(item) = queue.iter_mut().find(|i| i.id == id) {
+        let mut state = self.state.write().unwrap();
+        if let Some(item) = state.queue.iter_mut().find(|i| i.id == id) {
             item.status = DownloadStatus::Failed;
             item.end_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
             item.error_message = Some(error);
             item.speed_mbps = 0.0;
+        }
+        drop(state);
 
-            let h_lock = self.handler.read().unwrap();
-            if let Some(h) = &*h_lock {
-                h.on_status_change(id, DownloadStatus::Failed);
+        let h_lock = self.handler.read().unwrap();
+        if let Some(h) = &*h_lock {
+            h.on_status_change(id, DownloadStatus::Failed);
+        }
+    }
+
+    /// Mirrors Go's SkipDownloadItem
+    pub fn skip_item(&self, id: &str, file_path: String) {
+        let mut state = self.state.write().unwrap();
+        if let Some(item) = state.queue.iter_mut().find(|i| i.id == id) {
+            item.status = DownloadStatus::Skipped;
+            item.end_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+            item.file_path = Some(file_path);
+        }
+        drop(state);
+
+        let h_lock = self.handler.read().unwrap();
+        if let Some(h) = &*h_lock {
+            h.on_status_change(id, DownloadStatus::Skipped);
+        }
+    }
+
+    /// Mirrors Go's ClearDownloadQueue — removes completed/failed/skipped, keeps active/queued
+    pub fn clear_completed(&self) {
+        let mut state = self.state.write().unwrap();
+        state.queue.retain(|item| {
+            matches!(item.status, DownloadStatus::Queued | DownloadStatus::Downloading)
+        });
+    }
+
+    /// Mirrors Go's ClearAllDownloads — wipes everything and resets session
+    pub fn clear_all(&self) {
+        let mut state = self.state.write().unwrap();
+        state.queue.clear();
+        state.total_downloaded = 0.0;
+        state.session_start_time = 0;
+        state.is_downloading = false;
+        state.current_speed = 0.0;
+    }
+
+    /// Mirrors Go's CancelAllQueuedItems — marks all queued as skipped
+    pub fn cancel_all_queued(&self) {
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        let mut state = self.state.write().unwrap();
+        let mut cancelled = vec![];
+        for item in state.queue.iter_mut() {
+            if item.status == DownloadStatus::Queued {
+                item.status = DownloadStatus::Skipped;
+                item.end_time = now;
+                item.error_message = Some("Cancelled".to_string());
+                cancelled.push(item.id.clone());
             }
+        }
+        drop(state);
+
+        let h_lock = self.handler.read().unwrap();
+        if let Some(h) = &*h_lock {
+            for id in &cancelled {
+                h.on_status_change(id, DownloadStatus::Skipped);
+            }
+        }
+    }
+
+    /// Returns failed items for export
+    pub fn get_failed_items(&self) -> Vec<DownloadItem> {
+        let state = self.state.read().unwrap();
+        state.queue.iter()
+            .filter(|i| i.status == DownloadStatus::Failed)
+            .cloned()
+            .collect()
+    }
+
+    /// Mirrors Go's GetDownloadQueue — returns full DownloadQueueInfo
+    pub fn get_queue_info(&self) -> DownloadQueueInfo {
+        let state = self.state.read().unwrap();
+        let mut queued = 0;
+        let mut completed = 0;
+        let mut failed = 0;
+        let mut skipped = 0;
+        for item in &state.queue {
+            match item.status {
+                DownloadStatus::Queued => queued += 1,
+                DownloadStatus::Completed => completed += 1,
+                DownloadStatus::Failed => failed += 1,
+                DownloadStatus::Skipped => skipped += 1,
+                _ => {}
+            }
+        }
+        DownloadQueueInfo {
+            is_downloading: state.is_downloading,
+            queue: state.queue.clone(),
+            current_speed: state.current_speed,
+            total_downloaded: state.total_downloaded,
+            session_start_time: state.session_start_time,
+            queued_count: queued,
+            completed_count: completed,
+            failed_count: failed,
+            skipped_count: skipped,
         }
     }
 }

@@ -98,3 +98,49 @@ pub struct CurrentIPInfo {
     pub country_code: String,
     pub source: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SongLinkData {
+    pub isrc: Option<String>,
+    pub tidal_url: Option<String>,
+    pub amazon_url: Option<String>,
+    pub deezer_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrackAvailability {
+    pub spotify_id: String,
+    pub tidal: bool,
+    pub amazon: bool,
+    pub qobuz: bool,
+    pub deezer: bool,
+    pub tidal_url: Option<String>,
+    pub amazon_url: Option<String>,
+    pub qobuz_url: Option<String>,
+    pub deezer_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchResult {
+    pub id: String,
+    pub name: String,
+    #[serde(rename = "type")]
+    pub item_type: String,
+    pub artists: Option<String>,
+    pub album_name: Option<String>,
+    pub images: String,
+    pub release_date: Option<String>,
+    pub external_urls: String,
+    pub duration_ms: Option<u32>,
+    pub total_tracks: Option<u32>,
+    pub owner: Option<String>,
+    pub is_explicit: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchResponse {
+    pub tracks: Vec<SearchResult>,
+    pub albums: Vec<SearchResult>,
+    pub artists: Vec<SearchResult>,
+    pub playlists: Vec<SearchResult>,
+}
