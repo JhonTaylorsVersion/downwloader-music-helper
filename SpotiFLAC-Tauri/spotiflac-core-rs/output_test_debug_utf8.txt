@@ -1,0 +1,188 @@
+﻿cargo : warning: unused import: `Serialize`
+En línea: 1 Carácter: 1
++ cargo run --example test_download > output_test_debug.txt 2>&1
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (warning: unused import: `Serialize`:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+ --> src\providers\tidal.rs:6:26
+  |
+6 | use serde::{Deserialize, Serialize};
+  |                          ^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `Serialize`
+ --> src\providers\qobuz.rs:6:26
+  |
+6 | use serde::{Deserialize, Serialize};
+  |                          ^^^^^^^^^
+
+warning: unused import: `TrackMetadata`
+ --> src\providers\mod.rs:7:21
+  |
+7 | use crate::models::{TrackMetadata, AudioQuality};
+  |                     ^^^^^^^^^^^^^
+
+warning: unused import: `TagType`
+ --> src\metadata\tagger.rs:5:23
+  |
+5 | use lofty::tag::{Tag, TagType, ItemKey};
+  |                       ^^^^^^^
+
+warning: unused imports: `AudioQuality` and `TrackMetadata`
+ --> src\isrc\mod.rs:2:21
+  |
+2 | use crate::models::{TrackMetadata, AudioQuality};
+  |                     ^^^^^^^^^^^^^  ^^^^^^^^^^^^
+
+warning: unused import: `num_traits::Num`
+ --> src\isrc\spotify_id.rs:3:5
+  |
+3 | use num_traits::Num;
+  |     ^^^^^^^^^^^^^^^
+
+warning: unused import: `AudioQuality`
+ --> src\engine.rs:2:47
+  |
+2 | use crate::models::{AppConfig, TrackMetadata, AudioQuality};
+  |                                               ^^^^^^^^^^^^
+
+warning: unused import: `anyhow`
+ --> src\storage\history.rs:1:22
+  |
+1 | use anyhow::{Result, anyhow};
+  |                      ^^^^^^
+
+warning: variable `last_error` is assigned to, but never used
+  --> src\providers\tidal.rs:65:13
+   |
+65 |         let mut last_error = anyhow!("No mirrors available");
+   |             ^^^^^^^^^^^^^^
+   |
+   = note: consider using `_last_error` instead
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `last_error` is never read
+  --> src\providers\tidal.rs:88:21
+   |
+88 |                     last_error = anyhow!("Mirror returned {}", resp.status());
+   |                     ^^^^^^^^^^
+   |
+   = help: maybe it is overwritten before being read?
+   = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `last_error` is never read
+  --> src\providers\tidal.rs:82:25
+   |
+82 |                         last_error = anyhow!("Mirror connection failed: {}", e);
+   |                         ^^^^^^^^^^
+   |
+   = help: maybe it is overwritten before being read?
+
+warning: field `track_id` is never read
+  --> src\providers\tidal.rs:30:5
+   |
+29 | struct TidalData {
+   |        --------- field in this struct
+30 |     track_id: i64,
+   |     ^^^^^^^^
+   |
+   = note: `TidalData` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code 
+analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `app_secret` is never read
+  --> src\providers\qobuz.rs:14:5
+   |
+11 | pub struct QobuzProvider {
+   |            ------------- field in this struct
+...
+14 |     app_secret: String,
+   |     ^^^^^^^^^^
+
+warning: struct `QobuzStreamResponse` is never constructed
+  --> src\providers\qobuz.rs:34:8
+   |
+34 | struct QobuzStreamResponse {
+   |        ^^^^^^^^^^^^^^^^^^^
+
+warning: method `generate_sig` is never used
+  --> src\providers\qobuz.rs:51:8
+   |
+38 | impl QobuzProvider {
+   | ------------------ method in this implementation
+...
+51 |     fn generate_sig(&self, method: &str, params: Vec<(&str, &str)>) -> String {
+   |        ^^^^^^^^^^^^
+
+warning: `spotiflac-core-rs` (lib) generated 15 warnings (run `cargo fix --lib -p spotiflac-core-rs` to apply 8 
+suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.37s
+     Running `target\debug\examples\test_download.exe`
+===============================================
+­ƒöÑ SpotiFLAC-RS: INICIANDO TEST DE DESCARGA
+===============================================
+­ƒöù URL: https://open.spotify.com/intl-es/track/7jk7gqyEonmVVYahZN5zhW?si=2f6febb132c5468f
+DEBUG: Spotify Metadata Fetching ID -> 7jk7gqyEonmVVYahZN5zhW
+DEBUG: Resolving links via SongLink (Region: ES) -> https://open.spotify.com/intl-es/track/7jk7gqyEonmVVYahZN5zhW
+DEBUG: Resolving links via SongLink (Region: US) -> https://open.spotify.com/intl-es/track/7jk7gqyEonmVVYahZN5zhW
+DEBUG: Resolving links via SongLink (Region: ES) -> https://open.spotify.com/intl-es/track/7jk7gqyEonmVVYahZN5zhW
+DEBUG: Resolving links via SongLink (Region: GB) -> https://open.spotify.com/intl-es/track/7jk7gqyEonmVVYahZN5zhW
+DEBUG: ISRC Resolvido -> USJI10801081
+­ƒÜÇ Intentando con Tidal...
+DEBUG: Trying Mirror -> https://hifi-one.spotisaver.net/track/?id=33753865&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://hifi-one.spotisaver.net/search?query=33753865&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://hifi-two.spotisaver.net/track/?id=33753865&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://hifi-two.spotisaver.net/search?query=33753865&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://eu-central.monochrome.tf/track/?id=33753865&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://eu-central.monochrome.tf/search?query=33753865&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://us-west.monochrome.tf/track/?id=33753865&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://us-west.monochrome.tf/search?query=33753865&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://api.monochrome.tf/track/?id=33753865&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://api.monochrome.tf/search?query=33753865&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://monochrome-api.samidy.com/track/?id=33753865&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://monochrome-api.samidy.com/search?query=33753865&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://tidal.kinoplus.online/track/?id=33753865&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://tidal.kinoplus.online/search?query=33753865&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://hifi-one.spotisaver.net/track/?id=USJI10801081&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://hifi-one.spotisaver.net/search?query=USJI10801081&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://hifi-two.spotisaver.net/track/?id=USJI10801081&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://hifi-two.spotisaver.net/search?query=USJI10801081&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://eu-central.monochrome.tf/track/?id=USJI10801081&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://eu-central.monochrome.tf/search?query=USJI10801081&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://us-west.monochrome.tf/track/?id=USJI10801081&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://us-west.monochrome.tf/search?query=USJI10801081&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://api.monochrome.tf/track/?id=USJI10801081&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://api.monochrome.tf/search?query=USJI10801081&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://monochrome-api.samidy.com/track/?id=USJI10801081&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://monochrome-api.samidy.com/search?query=USJI10801081&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://tidal.kinoplus.online/track/?id=USJI10801081&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://tidal.kinoplus.online/search?query=USJI10801081&quality=LOSSLESS
+   Buscando por nombre: Britney Spears - Circus...
+DEBUG: Trying Mirror -> https://hifi-one.spotisaver.net/track/?id=Britney Spears - Circus&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://hifi-one.spotisaver.net/search?query=Britney Spears - Circus&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://hifi-two.spotisaver.net/track/?id=Britney Spears - Circus&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://hifi-two.spotisaver.net/search?query=Britney Spears - Circus&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://eu-central.monochrome.tf/track/?id=Britney Spears - Circus&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://eu-central.monochrome.tf/search?query=Britney Spears - Circus&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://us-west.monochrome.tf/track/?id=Britney Spears - Circus&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://us-west.monochrome.tf/search?query=Britney Spears - Circus&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://api.monochrome.tf/track/?id=Britney Spears - Circus&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://api.monochrome.tf/search?query=Britney Spears - Circus&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://monochrome-api.samidy.com/track/?id=Britney Spears - Circus&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://monochrome-api.samidy.com/search?query=Britney Spears - Circus&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://tidal.kinoplus.online/track/?id=Britney Spears - Circus&quality=LOSSLESS
+DEBUG: Trying Mirror -> https://tidal.kinoplus.online/search?query=Britney Spears - Circus&quality=LOSSLESS
+­ƒÜÇ Intentando con Qobuz...
+DEBUG: Buscando en Qobuz (ISRC o Texto) -> USJI10801081
+   Buscando por nombre: Britney Spears - Circus...
+DEBUG: Buscando en Qobuz (ISRC o Texto) -> Britney Spears - Circus
+­ƒÜÇ Intentando con Amazon...
+   Buscando por nombre: Britney Spears - Circus...
+
+ÔØî ERROR DURANTE LA DESCARGA
+ÔÜá´©Å  Motivo: No se pudo descargar de ning├║n proveedor tras agotar todas las estrategias.
+
+Nota: Aseg├║rate de que las APIs de los mirrors est├®n activas.
+===============================================

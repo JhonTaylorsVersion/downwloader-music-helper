@@ -132,7 +132,7 @@ impl SpotiFLACEngine {
 
     pub async fn check_track_availability(&self, spotify_id: &str) -> Result<crate::models::TrackAvailability> {
         let spotify_url = format!("https://open.spotify.com/track/{}", spotify_id);
-        let links = self.resolver.resolve_links(&spotify_url).await?;
+        let links = self.resolver.resolve_links(&spotify_url, Some(self.progress.clone())).await?;
         
         let mut availability = crate::models::TrackAvailability {
             spotify_id: spotify_id.to_string(),
@@ -160,7 +160,7 @@ impl SpotiFLACEngine {
 
             // Qobuz search by ISRC
             if isrc != "UNKNOWN" {
-                if let Ok(qobuz_id) = self.qobuz.search_qobuz_id_from_isrc_for_availability(&isrc).await {
+                if let Ok(qobuz_id) = self.qobuz.search_qobuz_id_from_isrc_for_availability(&isrc, self.progress.clone()).await {
                     availability.qobuz = true;
                     availability.qobuz_url = Some(format!("https://www.qobuz.com/track/{}", qobuz_id));
                 }
@@ -171,11 +171,12 @@ impl SpotiFLACEngine {
     }
 
     pub async fn download_track(&self, url: &str, config: &AppConfig, tidal_id_override: Option<String>) -> Result<PathBuf> {
-        // 0. Ensure FFmpeg binaries
+        self.progress.log("- [Paso 1/6] Verificando binarios FFmpeg...");
         crate::utils::ffmpeg_downloader::FFmpegDownloader::ensure_binaries().await?;
 
-        // 1. Fetch Basic Metadata from Spotify
+        self.progress.log(&format!("- [Paso 2/6] Obteniendo metadatos de Spotify para: {} - {}", url, tidal_id_override.as_deref().unwrap_or("")));
         let (mut metadata, _first_artist_id) = self.spotify.fetch_track_info_enriched(url).await?;
+        self.progress.log(&format!("  ✓ Metadatos obtenidos: {} - {}", metadata.artist, metadata.title));
         
         // Add to progress queue
         self.progress.add_to_queue(
@@ -186,96 +187,78 @@ impl SpotiFLACEngine {
             metadata.id.clone()
         );
         
-        // 2. Resolve IDs
-        let resolved = self.resolver.resolve_links(url).await?;
+        self.progress.log("- [Paso 3/6] Resolviendo ISRC y enlaces externos...");
+        let resolved = self.resolver.resolve_links(url, Some(self.progress.clone())).await?;
         metadata.isrc = Some(resolved.isrc.clone());
         let isrc = &resolved.isrc;
+        self.progress.log(&format!("  ✓ ISRC: {}", isrc));
+        if let Some(t_id) = &resolved.tidal_id { self.progress.log(&format!("  ✓ Tidal ID: {}", t_id)); }
+        
+        if resolved.tidal_url.is_none() && resolved.amazon_url.is_none() {
+             self.progress.log("  ⚠️ No se encontraron enlaces directos en Tidal o Amazon. Intentando búsqueda secundaria...");
+        }
 
         if let Some(h) = &self.history {
              if let Some(path) = h.is_already_downloaded(&metadata.id) {
-                 println!("ℹ️ Pista ya descargada anteriormente en: {} (Saltando...)", path);
+                 self.progress.log(&format!("ℹ️ Pista ya descargada anteriormente en: {} (Saltando...)", path));
                  return Ok(std::path::PathBuf::from(path));
              }
         }
 
-        println!("DEBUG: ISRC Resolvido -> {}", isrc);
+        self.progress.log(&format!("DEBUG: ISRC Resolvido -> {}", isrc));
 
         // 3. PRIORITIZE PROVIDERS (Tidal, Qobuz, Amazon)
+        self.progress.log("- [Paso 4/6] Seleccionando proveedor...");
         let providers_to_try = vec!["Tidal".to_string(), "Qobuz".to_string(), "Amazon".to_string()];
         let prioritized = self.provider_priority.prioritize_providers("spotify", providers_to_try);
 
         let mut last_error = anyhow!("Todos los proveedores fallaron");
 
         for provider_name in prioritized {
-            match provider_name.as_str() {
+            self.progress.log(&format!("  🔍 Intentando descargar desde {}...", provider_name));
+            
+            let result = match provider_name.as_str() {
                 "Tidal" => {
-                    let query_id = tidal_id_override.clone().or(resolved.tidal_id.clone()).unwrap_or_else(|| isrc.clone());
-                    match self.tidal.get_download_url(&query_id, config.download_quality.clone()).await {
-                        Ok(dl_info) => {
-                            match self.perform_download_sequence(&dl_info, &query_id, &metadata, config, &self.tidal).await {
-                                Ok(path) => {
-                                    let _ = self.provider_priority.record_outcome("spotify", "Tidal", true);
-                                    return Ok(path);
-                                },
-                                Err(e) => { 
-                                    let _ = self.provider_priority.record_outcome("spotify", "Tidal", false);
-                                    println!("⚠️ Tidal falló: {}", e); 
-                                    last_error = e; 
-                                }
-                            }
-                        },
-                        Err(e) => { 
-                            let _ = self.provider_priority.record_outcome("spotify", "Tidal", false);
-                            println!("⚠️ Tidal (Búsqueda) falló: {}", e); 
-                            last_error = e; 
-                        }
+                    let query_id = tidal_id_override.clone()
+                        .or(resolved.tidal_id.clone())
+                        .unwrap_or_else(|| isrc.clone());
+                    
+                    match self.tidal.get_download_url(&query_id, config.download_quality.clone(), self.progress.clone()).await {
+                        Ok(dl_info) => self.perform_download_sequence(&dl_info, &query_id, &metadata, config, &self.tidal).await,
+                        Err(e) => Err(e),
                     }
                 },
                 "Qobuz" => {
-                    match self.qobuz.get_download_url(isrc, config.download_quality.clone()).await {
-                        Ok(dl_info) => {
-                            match self.perform_download_sequence(&dl_info, isrc, &metadata, config, &self.qobuz).await {
-                                Ok(path) => {
-                                    let _ = self.provider_priority.record_outcome("spotify", "Qobuz", true);
-                                    return Ok(path);
-                                },
-                                Err(e) => { 
-                                    let _ = self.provider_priority.record_outcome("spotify", "Qobuz", false);
-                                    println!("⚠️ Qobuz falló: {}", e); 
-                                    last_error = e; 
-                                }
-                            }
-                        },
-                        Err(e) => { 
-                            let _ = self.provider_priority.record_outcome("spotify", "Qobuz", false);
-                            println!("⚠️ Qobuz (Búsqueda) falló: {}", e); 
-                            last_error = e; 
-                        }
+                    match self.qobuz.get_download_url(isrc, config.download_quality.clone(), self.progress.clone()).await {
+                        Ok(dl_info) => self.perform_download_sequence(&dl_info, isrc, &metadata, config, &self.qobuz).await,
+                        Err(e) => Err(e),
                     }
                 },
                 "Amazon" => {
-                    match self.amazon.get_download_url(isrc, config.download_quality.clone()).await {
-                        Ok(dl_info) => {
-                            match self.perform_download_sequence(&dl_info, isrc, &metadata, config, &self.amazon).await {
-                                Ok(path) => {
-                                    let _ = self.provider_priority.record_outcome("spotify", "Amazon", true);
-                                    return Ok(path);
-                                },
-                                Err(e) => { 
-                                    let _ = self.provider_priority.record_outcome("spotify", "Amazon", false);
-                                    println!("⚠️ Amazon falló: {}", e); 
-                                    last_error = e; 
-                                }
-                            }
-                        },
-                        Err(e) => { 
-                            let _ = self.provider_priority.record_outcome("spotify", "Amazon", false);
-                            println!("⚠️ Amazon (Búsqueda) falló: {}", e); 
-                            last_error = e; 
+                    // Only try Amazon if we have a resolved Amazon URL/ASIN
+                    if let Some(query) = &resolved.amazon_url {
+                        match self.amazon.get_download_url(query, config.download_quality.clone(), self.progress.clone()).await {
+                            Ok(dl_info) => self.perform_download_sequence(&dl_info, query, &metadata, config, &self.amazon).await,
+                            Err(e) => Err(e),
                         }
+                    } else {
+                        Err(anyhow!("No se encontró ASIN de Amazon para ISRC {} (Prueba el pivot de Deezer)", isrc))
                     }
                 },
-                _ => {}
+                _ => Err(anyhow!("Proveedor desconocido")),
+            };
+
+            match result {
+                Ok(path) => {
+                    let _ = self.provider_priority.record_outcome("spotify", &provider_name, true);
+                    return Ok(path);
+                },
+                Err(e) => {
+                    let _ = self.provider_priority.record_outcome("spotify", &provider_name, false);
+                    self.progress.log(&format!("  ⚠️ {} falló: {}", provider_name, e));
+                    last_error = e;
+                    continue; // Skip to next provider
+                }
             }
         }
 
@@ -289,9 +272,9 @@ impl SpotiFLACEngine {
         // --- MUSICBRAINZ ENRICHMENT ---
         if config.embed_genre {
             if let Some(isrc) = &final_metadata.isrc {
-                println!("DEBUG: Buscando género en MusicBrainz para ISRC {}...", isrc);
+                self.progress.log(&format!("- [EXTRA] Buscando género en MusicBrainz para ISRC {}...", isrc));
                 if let Ok(genre) = self.mb.fetch_genre(isrc, config.use_single_genre).await {
-                    println!("DEBUG: Género encontrado: {}", genre);
+                    self.progress.log(&format!("  ✓ Género encontrado: {}", genre));
                     final_metadata.genre = Some(genre);
                 }
             }
@@ -308,26 +291,33 @@ impl SpotiFLACEngine {
             final_metadata.track_number,
             final_metadata.disc_number,
         );
+        self.progress.log(&format!("  ✓ Nombre de archivo: {}.flac", filename_base));
 
         // --- DUPLICATE CHECK (Enhanced Scan) ---
         let output_dir = PathBuf::from(&config.output_dir);
         if !config.redownload_with_suffix {
             if let Some(existing_file) = crate::utils::scanner::AudioScanner::find_audio_file(&output_dir, &final_metadata.title, &final_metadata.artist) {
-                println!("✓ El archivo ya existe (Fuzzy Match): {:?}", existing_file);
+                self.progress.log(&format!("✓ El archivo ya existe (Fuzzy Match): {:?}", existing_file));
                 return Ok(existing_file);
             }
         }
 
         self.progress.start_item(file_id);
 
-        let temp_filename = format!("{}.tmp", file_id);
-        let temp_path = output_dir.join(&temp_filename);
-        
-        if let Some(parent) = temp_path.parent() {
-            if !parent.exists() { std::fs::create_dir_all(parent)?; }
+        // --- DIRECTORY CREATION PARITY ---
+        // Ensure the output directory exists before any file operations (mirroring Go's logic)
+        if let Err(e) = tokio::fs::create_dir_all(&output_dir).await {
+            self.progress.log(&format!("  ⚠️ Error creating output directory: {}", e));
+            return Err(anyhow!("Failed to create directory {:?}: {}", output_dir, e));
         }
 
+        // PARITY FIX: Use Spotify ID for temp filename instead of file_id (which could be a URL with illegal chars)
+        let temp_filename = format!("{}.tmp", metadata.id);
+        let temp_path = output_dir.join(&temp_filename);
+
+        self.progress.log("- [Paso 5/6] Iniciando descarga...");
         provider.download_track(dl_info, temp_path.to_str().unwrap(), self.progress.clone(), file_id).await?;
+        self.progress.log("  ✓ Descarga finalizada.");
 
         let mut decryption_key = None;
         if dl_info.starts_with("DECRYPT:") {
@@ -338,28 +328,36 @@ impl SpotiFLACEngine {
         }
 
         // --- CONVERSION ---
+        self.progress.log("- [Paso 6/6] Realizando conversión y post-procesamiento...");
         let final_ext = match config.download_quality {
             AudioQuality::Low => "mp3",
             _ => "flac",
         };
-        let output_dir = PathBuf::from(&config.output_dir);
+        let target_path = output_dir.join(format!("{}.{}", filename_base, final_ext));
+
         let target_path = output_dir.join(format!("{}.{}", filename_base, final_ext));
         let final_path = FilenameBuilder::resolve_path(&target_path, config.redownload_with_suffix);
 
         if temp_path.extension().and_then(|s| s.to_str()) == Some(final_ext) && decryption_key.is_none() {
+            self.progress.log("  ✓ Formato coincide, omitiendo conversión...");
             std::fs::rename(&temp_path, &final_path)?;
         } else if let Some(key) = decryption_key {
+            self.progress.log("  🔄 Decodificando con llave DRM...");
             FFmpeg::convert_with_key(temp_path.to_str().unwrap(), final_path.to_str().unwrap(), &key).await?;
         } else {
+            self.progress.log(&format!("  🔄 Convirtiendo a {} vía FFmpeg...", final_ext));
             FFmpeg::convert(temp_path.to_str().unwrap(), final_path.to_str().unwrap(), config.download_quality.clone()).await?;
         }
+        self.progress.log("  ✓ Conversión finalizada.");
         
         // --- VALIDATION ---
+        self.progress.log("  🔍 Validando integridad del archivo...");
         if let Err(e) = crate::utils::validation::DownloadValidator::validate_duration(final_path.to_str().unwrap(), final_metadata.duration_ms) {
             let _ = std::fs::remove_file(&final_path);
             let _ = std::fs::remove_file(temp_path);
             return Err(anyhow!("Validation failed: {}", e));
         }
+        self.progress.log("  ✓ Validación de duración exitosa.");
 
         let _ = std::fs::remove_file(temp_path);
 
@@ -382,6 +380,7 @@ impl SpotiFLACEngine {
             }
         }
 
+        self.progress.log("  🏷️ Incrustando metadatos y letras...");
         Tagger::embed_metadata(&final_path, &final_metadata, lyrics_content.as_deref())?;
         
         if config.embed_cover {
@@ -417,6 +416,9 @@ impl SpotiFLACEngine {
         if let Ok(meta) = std::fs::metadata(&final_path) {
             self.progress.complete_item(file_id, final_path.to_string_lossy().to_string(), meta.len() as f64 / (1024.0 * 1024.0));
         }
+
+        self.progress.log(&format!("✅ ÉXITO: Archivo listo en {:?}", final_path));
+        self.progress.log("===============================================");
 
         Ok(final_path)
     }

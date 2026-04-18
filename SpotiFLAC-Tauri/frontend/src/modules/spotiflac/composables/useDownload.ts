@@ -81,6 +81,10 @@ export function useDownload() {
 
     const downloadBatch = async (tracks: any[], folderName?: string) => {
         if (isDownloading.value) return;
+        if (!Array.isArray(tracks) || tracks.length === 0) {
+            toast.warning("No tracks available for batch download");
+            return;
+        }
         
         toast.info(`Starting batch download of ${tracks.length} tracks`);
         const downloadedPaths: string[] = [];

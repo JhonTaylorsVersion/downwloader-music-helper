@@ -81,15 +81,22 @@ onMounted(async () => {
     ffmpegStatus.value = event.payload;
   });
 
-  onUnmounted(() => {
-    unlistenProgress();
-    unlistenStatus();
+  const unlistenBackendLog = await listen<string>('backend-log', (event) => {
+    console.log(`%c[Backend]%c ${event.payload}`, "color: #7c3aed; font-weight: bold", "");
   });
 
+  // Prepare cleanup functions
+  const cleanups = [unlistenProgress, unlistenStatus, unlistenBackendLog];
+  (window as any)._spotiflac_cleanups = cleanups;
+  
   window.addEventListener('scroll', handleScroll, { passive: true });
 });
 
 onUnmounted(() => {
+  const cleanups = (window as any)._spotiflac_cleanups;
+  if (cleanups) {
+    cleanups.forEach((f: any) => f());
+  }
   window.removeEventListener('scroll', handleScroll);
 });
 
@@ -193,61 +200,50 @@ const handleHistorySelect = (cachedData: string) => {
 </script>
 
 <template>
-  <div class="flex h-screen w-full bg-background text-foreground overflow-hidden font-sans border shadow-2xl rounded-lg">
+  <div class="min-h-screen bg-background flex flex-col text-foreground">
     <SfTitleBar />
-
-    <!-- Sidebar -->
     <SfSidebar :current-page="currentPage" @page-change="handlePageChange" />
 
-    <!-- Main Content -->
-    <main class="flex-1 flex flex-col relative overflow-hidden pt-10 ml-14">
-      <!-- Fixed Header -->
-      <SfHeader :version="APP_VERSION" :has-update="hasUpdate" :release-date="releaseDate" />
+    <div class="flex-1 ml-14 mt-10 p-4 md:p-8 overflow-y-auto">
+      <div class="max-w-4xl mx-auto space-y-6">
+        <SfHeader
+          v-if="currentPage === 'main'"
+          :version="APP_VERSION"
+          :has-update="hasUpdate"
+          :release-date="releaseDate"
+        />
 
-      <!-- Dynamic Page Scroll Area -->
-      <div class="flex-1 overflow-y-auto custom-scrollbar px-8 py-6 bg-gradient-to-b from-background to-muted/10">
-        <transition 
-          name="page-fade" 
-          mode="out-in"
-        >
-          <div :key="currentPage" class="h-full max-w-6xl mx-auto">
-            <SfMainPage v-if="currentPage === 'main'" />
-            <SfSettingsPage
-              v-else-if="currentPage === 'settings'"
-              :on-unsaved-changes-change="handleUnsavedChangesChange"
-              :on-reset-request="handleRegisterSettingsReset"
-            />
-            <SfAboutPage v-else-if="currentPage === 'about'" />
-            <SfHistoryPage
-              v-else-if="currentPage === 'history'"
-              @history-select="handleHistorySelect"
-            />
-            <SfAudioAnalysisPage v-else-if="currentPage === 'audio-analysis'" />
-            <SfAudioConverterPage v-else-if="currentPage === 'audio-converter'" />
-            <SfAudioResamplerPage v-else-if="currentPage === 'audio-resampler'" />
-            <SfFileManagerPage v-else-if="currentPage === 'file-manager'" />
-            <SfDebugLoggerPage v-else-if="currentPage === 'debug'" />
-          </div>
-        </transition>
+        <SfMainPage v-if="currentPage === 'main'" />
+        <SfSettingsPage
+          v-else-if="currentPage === 'settings'"
+          :on-unsaved-changes-change="handleUnsavedChangesChange"
+          :on-reset-request="handleRegisterSettingsReset"
+        />
+        <SfAboutPage v-else-if="currentPage === 'about'" />
+        <SfHistoryPage
+          v-else-if="currentPage === 'history'"
+          @history-select="handleHistorySelect"
+        />
+        <SfAudioAnalysisPage v-else-if="currentPage === 'audio-analysis'" />
+        <SfAudioConverterPage v-else-if="currentPage === 'audio-converter'" />
+        <SfAudioResamplerPage v-else-if="currentPage === 'audio-resampler'" />
+        <SfFileManagerPage v-else-if="currentPage === 'file-manager'" />
+        <SfDebugLoggerPage v-else-if="currentPage === 'debug'" />
       </div>
 
-      <!-- Overlays -->
       <SfDownloadQueue :is-open="showDownloadQueue" @close="showDownloadQueue = false" />
       <SfDownloadProgressToast />
 
-      <!-- Scroll to Top -->
-      <transition name="fade">
-        <Button 
-          v-if="showScrollTop"
-          variant="outline" 
-          size="icon" 
-          class="fixed bottom-6 right-6 h-10 w-10 rounded-full shadow-lg border-primary/20 bg-background/80 backdrop-blur-md hover:bg-primary hover:text-white transition-all z-[60]"
-          @click="scrollToTop"
-        >
-          <ArrowUp class="h-4 w-4" />
-        </Button>
-      </transition>
-    </main>
+      <Button
+        v-if="showScrollTop"
+        variant="default"
+        size="icon"
+        class="fixed bottom-6 right-6 z-50 h-10 w-10 rounded-full shadow-lg"
+        @click="scrollToTop"
+      >
+        <ArrowUp class="h-5 w-5" />
+      </Button>
+    </div>
 
     <!-- FFmpeg Missing Dialog -->
     <Dialog :open="isFFmpegInstalled === false && !isInstallingFFmpeg">
@@ -316,48 +312,15 @@ const handleHistorySelect = (cachedData: string) => {
 </template>
 
 <style>
-/* Global Custom Scrollbar */
-.custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
-}
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: hsl(var(--muted-foreground) / 0.1);
-  border-radius: 20px;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.2);
-}
-
-/* Page Transitions */
-.page-fade-enter-active,
-.page-fade-leave-active {
-  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-}
-.page-fade-enter-from {
-  opacity: 0;
-  transform: translateY(20px) scale(0.98);
-  filter: blur(10px);
-}
-.page-fade-leave-to {
-  opacity: 0;
-  transform: translateY(-20px) scale(0.98);
-  filter: blur(10px);
-}
-
-/* Base Styles */
 body {
   margin: 0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background: transparent;
-  user-select: none;
 }
 
 #app {
   width: 100vw;
-  height: 100vh;
+  min-height: 100vh;
 }
 </style>

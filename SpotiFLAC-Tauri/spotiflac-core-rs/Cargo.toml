@@ -32,6 +32,7 @@ num-traits = "0.2"
 md5 = "0.7"
 sled = "0.34"
 lazy_static = "1.4"
+log = "0.4"
 
 # Para Tauri
 thiserror = "1.0"        # Errores personalizados compatibles con Tauri

@@ -1,5 +1,4 @@
 use anyhow::{Result, anyhow};
-use crate::models::{TrackMetadata, AudioQuality};
 use std::time::Duration;
 use serde_json::Value;
 
@@ -35,6 +34,7 @@ impl LinkResolver {
         Self {
             client: reqwest::Client::builder()
                 .timeout(Duration::from_secs(30))
+                .user_agent(crate::models::APP_USER_AGENT)
                 .build()
                 .unwrap(),
             songstats: SongStatsResolver::new(),
@@ -45,7 +45,7 @@ impl LinkResolver {
     }
 
     /// Resolves a Spotify link to ISRC and other platform IDs via SongLink and secondary resolvers.
-    pub async fn resolve_links(&self, spotify_url: &str) -> Result<ResolvedLinks> {
+    pub async fn resolve_links(&self, spotify_url: &str, progress: Option<Arc<crate::progress::ProgressManager>>) -> Result<ResolvedLinks> {
         let clean_url = spotify_url.split('?').next().unwrap_or(spotify_url);
         let (_, spotify_id) = spotify_id::parse_spotify_url(clean_url)?;
 
@@ -53,7 +53,7 @@ impl LinkResolver {
         let mut isrc = String::new();
         if let Some(c) = &self.cache {
             if let Ok(Some(cached_isrc)) = c.get(&spotify_id) {
-                println!("DEBUG: ISRC encontrado en cache -> {}", cached_isrc);
+                if let Some(p) = &progress { p.log(&format!("DEBUG [ISRC]: Encontrado en cache -> {}", cached_isrc)); }
                 isrc = cached_isrc;
             }
         }
@@ -62,7 +62,7 @@ impl LinkResolver {
         if isrc.is_empty() {
              isrc = self.resolve_isrc_spclient(spotify_url).await.unwrap_or_default();
              if isrc.is_empty() {
-                  println!("DEBUG: Spotify ISRC failed, trying SoundPlate...");
+                  if let Some(p) = &progress { p.log("DEBUG [ISRC]: Spotify falló, probando SoundPlate..."); }
                   if let Ok(s_isrc) = self.soundplate.resolve_isrc(clean_url).await {
                       isrc = s_isrc;
                   }
@@ -88,10 +88,31 @@ impl LinkResolver {
             }
         }
 
-        // 3. Fallbacks for ISRC (Deezer lookup)
-        if isrc.is_empty() && deezer_url.is_some() {
-            if let Ok(d_isrc) = self.songlink.get_deezer_isrc(deezer_url.as_ref().unwrap()).await {
-                isrc = d_isrc;
+        // 3. Fallbacks for ISRC (Deezer lookup) and Cross-Platform Resolution
+        if deezer_url.is_none() && !isrc.is_empty() {
+             if let Some(p) = &progress { p.log(&format!("  🔍 Fallback: Buscando enlace Deezer para ISRC {} (Deezer Pivot)...", isrc)); }
+             if let Ok(d_url) = self.songlink.lookup_deezer_url_by_isrc(&isrc).await {
+                 deezer_url = Some(d_url);
+             }
+        }
+
+        if deezer_url.is_some() {
+            let d_url = deezer_url.as_ref().unwrap();
+            
+            // If ISRC is still empty, get it from Deezer
+            if isrc.is_empty() {
+                if let Ok(d_isrc) = self.songlink.get_deezer_isrc(d_url).await {
+                    isrc = d_isrc;
+                }
+            }
+
+            // CROSS-PLATFORM FALLBACK: Try SongLink again but via Deezer URL
+            // This is the secret parity fix from Go! Deezer links often provide better mapping to Amazon/Tidal.
+            if let Some(p) = &progress { p.log("  🔄 Re-confirmando enlaces vía Deezer URL (Pivot de Calidad)..."); }
+            if let Ok(d_data) = self.songlink.resolve_from_url(d_url, Some("US")).await {
+                // We update existing links if Deezer found better ones
+                if let Some(new_tidal) = d_data.tidal_url { tidal_url = Some(new_tidal); }
+                if let Some(new_amazon) = d_data.amazon_url { amazon_url = Some(new_amazon); }
             }
         }
 
@@ -104,7 +125,7 @@ impl LinkResolver {
 
         // 5. SECONDARY RESOLVERS: If SongLink missed something, use SongStats
         if (tidal_url.is_none() || amazon_url.is_none()) && !isrc.is_empty() {
-            println!("DEBUG: Missing links in SongLink, trying SongStats for ISRC {}...", isrc);
+            if let Some(p) = &progress { p.log(&format!("  🔍 Fallback: Probando SongStats para ISRC {}...", isrc)); }
             if let Ok(ss_links) = self.songstats.resolve_links(&isrc).await {
                 if tidal_url.is_none() { tidal_url = ss_links.tidal_url; }
                 if amazon_url.is_none() { amazon_url = ss_links.amazon_url; }
@@ -138,7 +159,7 @@ impl LinkResolver {
         let response = self.client.get(&metadata_url)
             .header("Authorization", format!("Bearer {}", token))
             .header("Accept", "application/json")
-            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36")
+            .header("User-Agent", crate::models::APP_USER_AGENT)
             .send()
             .await?;
 
@@ -168,7 +189,7 @@ impl LinkResolver {
             totp_code, version, totp_code);
 
         let response = self.client.get(&token_url)
-            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36")
+            .header("User-Agent", crate::models::APP_USER_AGENT)
             .send()
             .await?;
 

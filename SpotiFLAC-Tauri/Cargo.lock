@@ -4717,6 +4717,7 @@ dependencies = [
  "image",
  "lazy_static",
  "lofty",
+ "log",
  "md5",
  "num-bigint",
  "num-traits",

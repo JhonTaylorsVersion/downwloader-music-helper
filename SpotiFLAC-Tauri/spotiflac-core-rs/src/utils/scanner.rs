@@ -39,7 +39,9 @@ impl AudioScanner {
                     let base_name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
                     
                     for pattern in &patterns {
-                        if base_name.starts_with(pattern) || base_name.contains(pattern) {
+                        // Strict check: the file must match the pattern exactly 
+                        // to be considered "already downloaded".
+                        if base_name == *pattern {
                             return Some(path);
                         }
                     }

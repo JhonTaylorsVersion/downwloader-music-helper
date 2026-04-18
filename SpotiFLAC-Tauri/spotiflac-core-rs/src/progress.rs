@@ -53,6 +53,7 @@ pub struct DownloadQueueInfo {
 pub trait ProgressHandler: Send + Sync {
     fn on_progress(&self, update: ProgressUpdate);
     fn on_status_change(&self, item_id: &str, status: DownloadStatus);
+    fn on_log(&self, message: String);
 }
 
 struct ProgressState {
@@ -85,6 +86,15 @@ impl ProgressManager {
     pub fn set_handler(&self, handler: Box<dyn ProgressHandler>) {
         let mut h = self.handler.write().unwrap();
         *h = Some(handler);
+    }
+
+    pub fn log(&self, message: &str) {
+        println!("{}", message);
+        log::info!("{}", message);
+        let h_lock = self.handler.read().unwrap();
+        if let Some(h) = &*h_lock {
+            h.on_log(message.to_string());
+        }
     }
 
     pub fn add_to_queue(&self, id: String, track: String, artist: String, album: String, spotify_id: String) {

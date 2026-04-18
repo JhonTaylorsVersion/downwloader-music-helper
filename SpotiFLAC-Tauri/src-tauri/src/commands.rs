@@ -43,6 +43,10 @@ impl ProgressHandler for TauriProgressHandler {
             },
         );
     }
+
+    fn on_log(&self, message: String) {
+        let _ = self.app_handle.emit("backend-log", message);
+    }
 }
 
 // ======================================
@@ -217,7 +221,7 @@ pub async fn get_track_isrc(
     state
         .engine
         .resolver
-        .resolve_links(&format!("https://open.spotify.com/track/{}", spotify_id))
+        .resolve_links(&format!("https://open.spotify.com/track/{}", spotify_id), Some(state.engine.progress.clone()))
         .await
         .map(|l| l.isrc)
         .map_err(|e| e.to_string())

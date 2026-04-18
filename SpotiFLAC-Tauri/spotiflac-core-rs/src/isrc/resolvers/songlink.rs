@@ -13,17 +13,21 @@ impl SongLinkResolver {
         Self {
             client: Client::builder()
                 .timeout(Duration::from_secs(30))
-                .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36")
+                .user_agent(crate::models::APP_USER_AGENT)
                 .build()
                 .unwrap(),
         }
     }
 
     pub async fn resolve_from_spotify(&self, spotify_url: &str, region: Option<&str>) -> Result<SongLinkData> {
-        let mut api_url = format!("https://api.song.link/v1-alpha.1/links?url={}", urlencoding::encode(spotify_url));
-        if let Some(r) = region {
-            api_url.push_str(&format!("&userCountry={}", r));
-        }
+        self.resolve_from_url(spotify_url, region).await
+    }
+
+    pub async fn resolve_from_url(&self, url: &str, region: Option<&str>) -> Result<SongLinkData> {
+        let region_str = region.unwrap_or("US");
+        
+        let mut api_url = format!("https://api.song.link/v1-alpha.1/links?url={}", urlencoding::encode(url));
+        api_url.push_str(&format!("&userCountry={}", region_str));
 
         let response = self.client.get(&api_url).send().await?;
         if !response.status().is_success() {
@@ -35,10 +39,12 @@ impl SongLinkResolver {
 
         // 1. Extract ISRC from entities
         if let Some(entities) = body.get("entitiesByUniqueId") {
-            for (_, entity) in entities.as_object().unwrap() {
-                if let Some(isrc) = entity.get("isrc").and_then(|v| v.as_str()) {
-                    data.isrc = Some(isrc.to_uppercase().to_string());
-                    break;
+            if let Some(obj) = entities.as_object() {
+                for (_, entity) in obj {
+                    if let Some(isrc) = entity.get("isrc").and_then(|v| v.as_str()) {
+                        data.isrc = Some(isrc.to_uppercase().to_string());
+                        break;
+                    }
                 }
             }
         }
@@ -73,14 +79,23 @@ impl SongLinkResolver {
         }
 
         // Regex patterns for path-based IDs
-        let re_album = Regex::new(r"/albums/[A-Z0-9]{10}/(B[0-9A-Z]{9})").unwrap();
-        let re_track = Regex::new(r"/tracks/(B[0-9A-Z]{9})").unwrap();
+        let re_album = Regex::new(r"/(?:albums|album)/[A-Z0-9]{10}/?(B[0-9A-Z]{9})?").unwrap();
+        let re_track = Regex::new(r"/(?:tracks|track)/(B[0-9A-Z]{9})").unwrap();
 
-        if let Some(caps) = re_album.captures(url) {
-            return Some(format!("https://music.amazon.com/tracks/{}?musicTerritory=US", &caps[1]));
-        }
         if let Some(caps) = re_track.captures(url) {
             return Some(format!("https://music.amazon.com/tracks/{}?musicTerritory=US", &caps[1]));
+        }
+        if let Some(caps) = re_album.captures(url) {
+             if let Some(asin) = caps.get(1) {
+                return Some(format!("https://music.amazon.com/tracks/{}?musicTerritory=US", asin.as_str()));
+             }
+        }
+        
+        // Final fallback: just try to find something that looks like an ASIN in the whole URL
+        // PARITY: Updated to B[0-9A-Z]{9} to match Go's more inclusive pattern
+        let re_asin = Regex::new(r"(B[0-9A-Z]{9})").unwrap();
+        if let Some(caps) = re_asin.captures(url) {
+             return Some(format!("https://music.amazon.com/tracks/{}?musicTerritory=US", &caps[1]));
         }
 
         None
@@ -114,6 +129,27 @@ impl SongLinkResolver {
             .ok_or_else(|| anyhow!("ISRC not found in Deezer API"))?;
             
         Ok(isrc.to_uppercase().to_string())
+    }
+
+    pub async fn lookup_deezer_url_by_isrc(&self, isrc: &str) -> Result<String> {
+        let api_url = format!("https://api.deezer.com/track/isrc:{}", isrc.to_uppercase());
+        
+        let resp = self.client.get(&api_url).send().await?;
+        if !resp.status().is_success() {
+            return Err(anyhow!("Deezer ISRC API failed with status {}", resp.status()));
+        }
+
+        let body: Value = resp.json().await?;
+        
+        if let Some(link) = body.get("link").and_then(|v| v.as_str()) {
+            return Ok(link.to_string());
+        }
+
+        if let Some(id) = body.get("id").and_then(|v| v.as_u64()) {
+            return Ok(format!("https://www.deezer.com/track/{}", id));
+        }
+
+        Err(anyhow!("No Deezer track link found for ISRC {}", isrc))
     }
 }
 

@@ -17,8 +17,10 @@ impl FFmpegDownloader {
         let ffprobe_exists = crate::utils::ffmpeg::FFprobe::get_path().is_ok();
 
         if !ffmpeg_exists || !ffprobe_exists {
-            println!("FFmpeg or FFprobe missing. Starting download...");
+            println!("- [AVISO] FFmpeg o FFprobe no encontrados. Iniciando descarga automática...");
             Self::download_binaries(None::<fn(f64, &str)>).await?;
+        } else {
+            println!("  ✓ FFmpeg y FFprobe encontrados.");
         }
 
         Ok(())
@@ -68,8 +70,9 @@ impl FFmpegDownloader {
     }
 
     async fn download_and_extract(client: &Client, url: &str, dest_dir: &Path, binary_name: &str) -> Result<()> {
+        println!("  📥 Descargando {}...", binary_name);
         let response = client.get(url)
-            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36")
+            .header("User-Agent", crate::models::APP_USER_AGENT)
             .send().await?;
 
         if !response.status().is_success() {

@@ -28,6 +28,17 @@ struct QobuzCredentials {
     pub fetched_at: u64,
 }
 
+#[derive(Deserialize)]
+struct QobuzMirrorResponse {
+    pub url: Option<String>,
+    pub data: Option<QobuzMirrorData>,
+}
+
+#[derive(Deserialize)]
+struct QobuzMirrorData {
+    pub url: Option<String>,
+}
+
 pub struct QobuzProvider {
     client: Client,
     creds: Arc<RwLock<Option<QobuzCredentials>>>,
@@ -40,7 +51,10 @@ impl QobuzProvider {
         Self {
             client: Client::builder()
                 .timeout(Duration::from_secs(20))
-                .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
+                .user_agent(crate::models::APP_USER_AGENT)
+                .http1_only() // Force HTTP/1.1
+                .no_gzip()    // Disable compression types mirrors might not handle
+                .no_brotli()
                 .build()
                 .unwrap(),
             creds: Arc::new(RwLock::new(creds)),
@@ -80,7 +94,7 @@ impl QobuzProvider {
         }
     }
 
-    async fn get_valid_credentials(&self, force_refresh: bool) -> Result<QobuzCredentials> {
+    async fn get_valid_credentials(&self, force_refresh: bool, progress: Arc<ProgressManager>) -> Result<QobuzCredentials> {
         if !force_refresh {
             let creds_lock = self.creds.read().await;
             if let Some(c) = &*creds_lock {
@@ -89,7 +103,7 @@ impl QobuzProvider {
         }
 
         // Need to fetch
-        println!("🔄 Fetching fresh Qobuz credentials...");
+        progress.log("🔄 Renovando credenciales de Qobuz...");
         match self.scrape_credentials().await {
             Ok(c) => {
                 let mut creds_lock = self.creds.write().await;
@@ -98,7 +112,7 @@ impl QobuzProvider {
                 Ok(c)
             }
             Err(e) => {
-                println!("⚠️ Failed to scrape Qobuz credentials: {}. Using fallback.", e);
+                progress.log(&format!("⚠️ Error en scraping de Qobuz: {}. Usando fallback.", e));
                 Ok(QobuzCredentials {
                     app_id: DEFAULT_APP_ID.to_string(),
                     app_secret: DEFAULT_APP_SECRET.to_string(),
@@ -158,12 +172,12 @@ impl QobuzProvider {
         format!("{:x}", digest)
     }
 
-    pub async fn search_qobuz_id_from_isrc_for_availability(&self, isrc: &str) -> Result<i64> {
-        self.search_qobuz_id_from_isrc(isrc, false).await
+    pub async fn search_qobuz_id_from_isrc_for_availability(&self, isrc: &str, progress: Arc<ProgressManager>) -> Result<i64> {
+        self.search_qobuz_id_from_isrc(isrc, false, progress).await
     }
 
-    async fn search_qobuz_id_from_isrc(&self, isrc: &str, force_refresh_creds: bool) -> Result<i64> {
-        let creds = self.get_valid_credentials(force_refresh_creds).await?;
+    async fn search_qobuz_id_from_isrc(&self, isrc: &str, force_refresh_creds: bool, progress: Arc<ProgressManager>) -> Result<i64> {
+        let creds = self.get_valid_credentials(force_refresh_creds, progress.clone()).await?;
         
         let mut params = HashMap::new();
         params.insert("query".to_string(), isrc.to_string());
@@ -185,7 +199,7 @@ impl QobuzProvider {
 
         if resp.status() == reqwest::StatusCode::UNAUTHORIZED || resp.status() == reqwest::StatusCode::BAD_REQUEST {
             if !force_refresh_creds {
-                return Box::pin(self.search_qobuz_id_from_isrc(isrc, true)).await;
+                return Box::pin(self.search_qobuz_id_from_isrc(isrc, true, progress)).await;
             }
         }
 
@@ -199,47 +213,117 @@ impl QobuzProvider {
             .ok_or_else(|| anyhow!("Track not found on Qobuz for ISRC: {}", isrc))
     }
 
-    async fn try_standard_apis(&self, track_id: i64, quality: &str) -> Result<String> {
-        let apis = vec![
-            "https://dab.yeet.su/api/stream?trackId=".to_string(),
-            "https://dabmusic.xyz/api/stream?trackId=".to_string(),
-            "https://qbz.afkarxyz.qzz.io/api/track/".to_string(),
+    async fn get_download_url_with_fallback(&self, isrc: &str, quality: AudioQuality, allow_fallback: bool, progress: Arc<ProgressManager>) -> Result<String> {
+        let q_index = match quality {
+            AudioQuality::HiRes => 27,
+            AudioQuality::Lossless => 6,
+            AudioQuality::Low => 5,
+        };
+
+        progress.log(&format!("  🔍 Resolviendo ISRC {} en Qobuz...", isrc));
+        let qobuz_id = self.search_qobuz_id_from_isrc(isrc, false, progress.clone()).await?;
+        progress.log(&format!("  ✓ Qobuz ID encontrado: {}", qobuz_id));
+
+        let mirrors = vec![
+            "https://dab.yeet.su/api".to_string(),
+            "https://dabmusic.xyz/api".to_string(),
+            "https://qbz.afkarxyz.qzz.io/api".to_string(),
         ];
 
-        let sorted_apis = self.mirrors.prioritize("qobuz", apis);
-        let mut last_err = anyhow!("All Qobuz mirrors failed");
+        let prioritized_mirrors = self.mirrors.prioritize("qobuz", mirrors);
+        let mut last_error = anyhow!("No mirrors available");
 
-        for api in sorted_apis {
-            let url = if api.contains("qbz.afkarxyz.qzz.io") {
-                format!("{}{}/?quality={}", api, track_id, quality)
+        for mirror in prioritized_mirrors {
+            let url = if mirror.contains("qbz") {
+                format!("{}/track/{}/?quality={}", mirror, qobuz_id, q_index)
             } else {
-                format!("{}{}&quality={}", api, track_id, quality)
+                format!("{}/stream?trackId={}&quality={}", mirror, qobuz_id, q_index)
             };
+            
+            progress.log(&format!("DEBUG [Qobuz]: Probando Mirror -> {} [UA: Go-http-client/1.1]", mirror));
+            
+            // --- PARITY: Fresh client per mirror check (mirrors Go's architecture) ---
+            let fresh_client = Client::builder()
+                .timeout(std::time::Duration::from_secs(30)) // Increased to 30s
+                .user_agent("Go-http-client/1.1") // Parity signature
+                .http1_only() // Keep HTTP/1.1
+                .danger_accept_invalid_certs(true)
+                .build()
+                .unwrap_or_else(|_| self.client.clone());
 
-            match self.client.get(&url).send().await {
+            // Anti-429 delay: Increased to 2 seconds for better stability
+            tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+
+            match fresh_client.get(&url)
+                .header("Accept", "*/*")
+                .header("Connection", "keep-alive")
+                .send().await {
                 Ok(resp) if resp.status().is_success() => {
-                    let data: serde_json::Value = resp.json().await?;
-                    let stream_url = data.get("url").and_then(|v| v.as_str())
-                        .or_else(|| data.pointer("/data/url").and_then(|v| v.as_str()));
+                    let status = resp.status();
+                    let body_bytes = resp.bytes().await?;
                     
-                    if let Some(u) = stream_url {
-                        self.mirrors.record_outcome("qobuz", &api, true);
-                        return Ok(u.to_string());
+                    // Try parsing as JSON first (mirrors Go logic)
+                    if let Ok(m_resp) = serde_json::from_slice::<QobuzMirrorResponse>(&body_bytes) {
+                        if let Some(u) = m_resp.url {
+                            progress.log(&format!("DEBUG [Qobuz]: Mirror responde éxito (JSON)"));
+                            self.mirrors.record_outcome("qobuz", &mirror, true);
+                            return Ok(u);
+                        }
+                        if let Some(data) = m_resp.data {
+                            if let Some(u) = data.url {
+                                progress.log(&format!("DEBUG [Qobuz]: Mirror responde éxito (JSON Anidado)"));
+                                self.mirrors.record_outcome("qobuz", &mirror, true);
+                                return Ok(u);
+                            }
+                        }
                     }
-                    last_err = anyhow!("No stream URL in JSON response from {}", api);
+
+                    // Fallback to plain text if JSON fails but contains http
+                    let text = String::from_utf8_lossy(&body_bytes);
+                    if text.contains("http") {
+                        let lines: Vec<&str> = text.lines().collect();
+                        for line in lines {
+                            let trimmed = line.trim();
+                            if trimmed.starts_with("http") && !trimmed.contains("{") {
+                                progress.log(&format!("DEBUG [Qobuz]: Mirror responde éxito (Texto)"));
+                                self.mirrors.record_outcome("qobuz", &mirror, true);
+                                return Ok(trimmed.to_string());
+                            }
+                        }
+                    }
+                    
+                    progress.log(&format!("DEBUG [Qobuz]: Mirror respondió 200 pero el cuerpo no es válido."));
+                    self.mirrors.record_outcome("qobuz", &mirror, false);
                 },
                 Ok(resp) => {
-                    self.mirrors.record_outcome("qobuz", &api, false);
-                    last_err = anyhow!("Mirror {} returned {}", api, resp.status());
+                    progress.log(&format!("DEBUG [Qobuz]: Mirror rechazó [Code: {}]", resp.status()));
+                    self.mirrors.record_outcome("qobuz", &mirror, false);
+                    last_error = anyhow!("Mirror returned {}", resp.status());
                 },
                 Err(e) => {
-                    self.mirrors.record_outcome("qobuz", &api, false);
-                    last_err = e.into();
+                    let err_msg = format!("{:?}", e);
+                    progress.log(&format!("DEBUG [Qobuz]: ERROR DE RED en {}: {}", mirror, err_msg));
+                    self.mirrors.record_outcome("qobuz", &mirror, false);
+                    last_error = e.into();
                 }
             }
         }
 
-        Err(last_err)
+        if allow_fallback {
+            match quality {
+                AudioQuality::HiRes => {
+                    progress.log("⚠️ Qobuz HI_RES falló, intentando LOSSLESS...");
+                    return Box::pin(self.get_download_url_with_fallback(isrc, AudioQuality::Lossless, true, progress)).await;
+                },
+                AudioQuality::Lossless => {
+                    progress.log("⚠️ Qobuz LOSSLESS falló, intentando LOW...");
+                    return Box::pin(self.get_download_url_with_fallback(isrc, AudioQuality::Low, false, progress)).await;
+                },
+                _ => {}
+            }
+        }
+
+        Err(last_error)
     }
 }
 
@@ -247,30 +331,8 @@ impl QobuzProvider {
 impl AudioProvider for QobuzProvider {
     fn name(&self) -> &str { "Qobuz" }
 
-    async fn get_download_url(&self, isrc: &str, quality: AudioQuality) -> Result<String> {
-        let track_id = self.search_qobuz_id_from_isrc(isrc, false).await?;
-        
-        let initial_quality = match quality {
-            AudioQuality::HiRes => "27",
-            AudioQuality::Lossless => "6",
-            AudioQuality::Low => "5",
-        };
-
-        let fallback_chain = if initial_quality == "27" {
-            vec!["27", "7", "6"]
-        } else if initial_quality == "7" {
-            vec!["7", "6"]
-        } else {
-            vec![initial_quality]
-        };
-
-        for q_code in fallback_chain {
-            if let Ok(url) = self.try_standard_apis(track_id, q_code).await {
-                return Ok(url);
-            }
-        }
-
-        Err(anyhow!("No Qobuz mirrors or fallbacks yielded a valid download URL"))
+    async fn get_download_url(&self, isrc: &str, quality: AudioQuality, progress: Arc<ProgressManager>) -> Result<String> {
+        self.get_download_url_with_fallback(isrc, quality, true, progress).await
     }
 
     async fn download_track(&self, url: &str, path: &str, progress: Arc<ProgressManager>, item_id: &str) -> Result<()> {

@@ -31,7 +31,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Forzamos el ID de Tidal para este test específico (Mägo de Oz - Molinos de Viento)
     // Esto nos permite saltar el fallo de la API de SongLink y validar el resto del motor.
-    let force_tidal_id = Some("2281696".to_string());
+    let force_tidal_id: Option<String> = None;
 
     println!("===============================================");
     println!("🔥 SpotiFLAC-RS: INICIANDO TEST DE DESCARGA");
