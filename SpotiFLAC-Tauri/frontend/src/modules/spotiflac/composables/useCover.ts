@@ -1,6 +1,6 @@
 import { ref } from "vue";
 import { downloadCover } from "../utils/api";
-import { useSettingsStore } from "../stores/useSettingsStore";
+import { getSettings } from "../utils/settings";
 import { parseTemplate, type TemplateData } from "../types/settings";
 import { toastWithSound as toast } from "../utils/toast-with-sound";
 import { joinPath, sanitizePath, getFirstArtist } from "../utils/utils";
@@ -25,7 +25,7 @@ export function useCover() {
         const id = trackId || `${trackName}-${artistName}`;
         logger.info(`downloading cover: ${trackName} - ${artistName}`);
         
-        const settings = useSettingsStore().settings;
+        const settings = getSettings();
         downloadingCover.value = true;
         downloadingCoverTrack.value = id;
         
@@ -115,7 +115,7 @@ export function useCover() {
             toast.error("No tracks to download covers");
             return;
         }
-        const settings = useSettingsStore().settings;
+        const settings = getSettings();
         isBulkDownloadingCovers.value = true;
         coverDownloadProgress.value = 0;
         stopBulkDownloadRef.value = false;

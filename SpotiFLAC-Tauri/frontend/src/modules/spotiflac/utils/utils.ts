@@ -1,7 +1,7 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
-import type { Settings } from "../stores/useSettingsStore";
+import type { Settings } from "./settings";
 export function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
 }

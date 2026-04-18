@@ -1,12 +1,12 @@
 import { toast } from "vue-sonner";
 import { playSuccessSound, playErrorSound, playWarningSound, playInfoSound, } from "./audio";
 import { logger } from "./logger";
-import { useSettingsStore } from "../stores/useSettingsStore";
+import { getSettings } from "./settings";
 const toastStyle = {
     className: "font-mono lowercase",
 };
 type ToastData = Parameters<typeof toast.success>[1];
-const isSfxEnabled = () => useSettingsStore().settings.sfxEnabled;
+const isSfxEnabled = () => getSettings().sfxEnabled;
 export const toastWithSound = {
     success: (message: string, data?: ToastData) => {
         const msg = message.toLowerCase();

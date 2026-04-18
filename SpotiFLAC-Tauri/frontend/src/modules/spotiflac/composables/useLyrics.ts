@@ -1,6 +1,6 @@
 import { ref } from "vue";
 import { downloadLyrics } from "../utils/api";
-import { useSettingsStore } from "../stores/useSettingsStore";
+import { getSettings } from "../utils/settings";
 import { parseTemplate, type TemplateData } from "../types/settings";
 import { toastWithSound as toast } from "../utils/toast-with-sound";
 import { joinPath, sanitizePath, getFirstArtist } from "../utils/utils";
@@ -43,7 +43,7 @@ export function useLyrics() {
             return;
         }
         logger.info(`downloading lyrics: ${trackName} - ${artistName}`);
-        const settings = useSettingsStore().settings;
+        const settings = getSettings();
         downloadingLyricsTrack.value = spotifyId;
         
         try {
@@ -132,7 +132,7 @@ export function useLyrics() {
             toast.error("No tracks with Spotify ID available for lyrics download");
             return;
         }
-        const settings = useSettingsStore().settings;
+        const settings = getSettings();
         isBulkDownloadingLyrics.value = true;
         lyricsDownloadProgress.value = 0;
         stopBulkDownloadRef.value = false;

@@ -52,7 +52,14 @@ Source of truth for parity:
 
 ## Structural follow-up
 
-- [ ] `spotiflac-core-rs` is moved inside `SpotiFLAC-Tauri`
-- [ ] No cross-import/runtime dependency remains on the legacy app
-- [ ] No React/JSX leftovers remain in Vue templates
+- [x] `spotiflac-core-rs` is moved inside `SpotiFLAC-Tauri`
+- [x] No cross-import/runtime dependency remains on the legacy app
+- [x] No React/JSX leftovers remain in Vue templates
 - [x] `create_m3u8_file` matches original behavior
+
+## Phase 5
+
+- [x] Workspace structure is internally consistent for the Tauri/Vue app
+- [x] Duplicate settings state path was removed in favor of a single source of truth
+- [x] Legacy React/Wails runtime references are no longer present in the active Tauri frontend
+- [x] Structural checklist now reflects the real workspace layout

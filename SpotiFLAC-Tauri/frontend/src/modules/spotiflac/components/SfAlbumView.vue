@@ -124,7 +124,7 @@ import SfTrackList from './SfTrackList.vue';
 import SfDownloadProgress from './SfDownloadProgress.vue';
 import { buildClickableArtists, splitArtistNames } from '../utils/artist-links';
 import { downloadCover } from '../utils/api';
-import { useSettingsStore } from '../stores/useSettingsStore';
+import { getSettings } from '../utils/settings';
 import { joinPath, sanitizePath } from '../utils/utils';
 import { parseTemplate, type TemplateData } from '../utils/settings';
 import { toastWithSound as toast } from '../utils/toast-with-sound';
@@ -199,7 +199,6 @@ defineEmits([
   'pageChange','artistClick','albumClick','trackClick','back',
 ]);
 
-const settingsStore = useSettingsStore();
 const downloadingAlbumCover = ref(false);
 
 const albumArtistNames = computed(() => splitArtistNames(props.albumInfo.artists));
@@ -241,7 +240,7 @@ async function handleDownloadAlbumCover() {
   if (!props.albumInfo.images) return;
   downloadingAlbumCover.value = true;
   try {
-    const s = settingsStore.settings;
+    const s = getSettings();
     const os = s.operatingSystem;
     const placeholder = '__SLASH_PLACEHOLDER__';
     let outputDir = s.downloadPath;
