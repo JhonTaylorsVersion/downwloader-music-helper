@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "spotiflac-core-rs",
+    "src-tauri"
+]
+resolver = "2"
