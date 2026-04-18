@@ -38,7 +38,7 @@ const {
 } = useMetadata();
 const { 
   isDownloading, downloadProgress, currentDownloadInfo, 
-  downloadedTracks, downloadTrack, downloadBatch 
+  downloadedTracks, downloadTrack, downloadBatch, getFolderNameForMetadata
 } = useDownload();
 const { settings } = useSettings();
 const { fetchHistory, deleteFetchHistoryItem } = useHistory();
@@ -88,12 +88,12 @@ const handleDownloadBatch = () => {
   const tracksToDownload = metadata.value.track_list.filter((t: any) => 
     selectedTracks.value.includes(t.spotify_id || t.id)
   );
-  downloadBatch(tracksToDownload);
+  downloadBatch(tracksToDownload, getFolderNameForMetadata(metadata.value));
 };
 
 const handleDownloadAll = () => {
   if (!metadata.value) return;
-  downloadBatch(metadata.value.track_list);
+  downloadBatch(metadata.value.track_list, getFolderNameForMetadata(metadata.value));
 };
 
 const handleHistoryRestore = (event: Event) => {

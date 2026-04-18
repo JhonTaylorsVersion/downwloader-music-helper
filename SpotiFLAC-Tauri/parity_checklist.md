@@ -42,9 +42,17 @@ Source of truth for parity:
 - [x] History page can restore cached fetch payloads back into the main view
 - [x] History page opens original URLs through the Tauri shell command instead of raw `window.open`
 
+## Phase 4
+
+- [x] `create_m3u8_file` now matches the original helper more closely
+- [x] M3U8 files use sanitized playlist names like the original app
+- [x] M3U8 contents prefer relative paths when tracks live under the output folder
+- [x] Batch download flow now triggers M3U8 creation when the setting is enabled
+- [x] Playlist batch naming respects playlist owner naming preference for auxiliary files
+
 ## Structural follow-up
 
 - [ ] `spotiflac-core-rs` is moved inside `SpotiFLAC-Tauri`
 - [ ] No cross-import/runtime dependency remains on the legacy app
 - [ ] No React/JSX leftovers remain in Vue templates
-- [ ] `create_m3u8_file` matches original behavior
+- [x] `create_m3u8_file` matches original behavior

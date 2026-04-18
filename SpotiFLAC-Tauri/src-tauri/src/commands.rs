@@ -413,12 +413,42 @@ pub async fn create_m3u8_file(
     output_dir: String,
     file_paths: Vec<String>,
 ) -> Result<(), String> {
-    let mut content = String::from("#EXTM3U\n");
-    content.push_str(&format!("#PLAYLIST:{}\n\n", playlist_name));
-    for path in &file_paths {
-        content.push_str(&format!("{}\n", path));
+    if file_paths.is_empty() {
+        return Ok(());
     }
-    let m3u8_path = PathBuf::from(&output_dir).join(format!("{}.m3u8", playlist_name));
+
+    let output_dir = PathBuf::from(&output_dir);
+    std::fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
+
+    let safe_name = sanitize_playlist_filename(&playlist_name);
+    let file_name = if safe_name.is_empty() {
+        "playlist".to_string()
+    } else {
+        safe_name
+    };
+    let m3u8_path = output_dir.join(format!("{}.m3u8", file_name));
+
+    let mut content = String::from("#EXTM3U\n");
+    for path in &file_paths {
+        if path.trim().is_empty() {
+            continue;
+        }
+
+        let source_path = PathBuf::from(path);
+        let relative_path = if source_path.is_absolute() {
+            source_path
+                .strip_prefix(&output_dir)
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|_| source_path.clone())
+        } else {
+            source_path.clone()
+        };
+
+        let playlist_path = relative_path.to_string_lossy().replace('\\', "/");
+        content.push_str(&playlist_path);
+        content.push('\n');
+    }
+
     std::fs::write(&m3u8_path, content).map_err(|e| e.to_string())
 }
 
@@ -1264,6 +1294,19 @@ fn upgrade_spotify_cover_url(url: &str) -> String {
         return url.replace(SIZE_640, SIZE_MAX);
     }
     url.to_string()
+}
+
+fn sanitize_playlist_filename(name: &str) -> String {
+    let sanitized = name
+        .chars()
+        .map(|ch| match ch {
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
+            c if c.is_control() => '_',
+            c => c,
+        })
+        .collect::<String>();
+
+    sanitized.trim().trim_matches('.').to_string()
 }
 
 /// Generic file downloader — used by cover/header/avatar/gallery
