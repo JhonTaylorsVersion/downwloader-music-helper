@@ -27,8 +27,7 @@ export async function checkHealth(): Promise<HealthResponse> {
 }
 
 export async function fetchCurrentIPInfo(): Promise<CurrentIPInfo> {
-    const jsonString: string = await invoke('get_current_ip_info');
-    return JSON.parse(jsonString);
+    return await invoke<CurrentIPInfo>('get_current_ip_info');
 }
 
 export async function downloadLyrics(request: LyricsDownloadRequest): Promise<LyricsDownloadResponse> {

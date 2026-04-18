@@ -61,6 +61,8 @@ export interface HistoryItem {
     artist: string;
     image: string;
     timestamp: number;
+    data?: string;
+    info?: string;
 }
 
 defineProps<{ history: HistoryItem[] }>();

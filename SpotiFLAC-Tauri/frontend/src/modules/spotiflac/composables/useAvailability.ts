@@ -21,13 +21,12 @@ export function useAvailability() {
 
         try {
             logger.info(`Checking availability for track: ${spotifyId}`);
-            const response: string = await withTimeout(
+            const availability = await withTimeout<TrackAvailability>(
                 invoke("check_track_availability", { url: spotifyId }), 
                 CHECK_TIMEOUT_MS, 
                 `Availability check timed out after 10 seconds for ${spotifyId}`
             );
-            
-            const availability: TrackAvailability = JSON.parse(response);
+
             const newMap = new Map(availabilityMap.value);
             newMap.set(spotifyId, availability);
             availabilityMap.value = newMap;

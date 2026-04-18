@@ -1,13 +1,12 @@
 use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
 use spotiflac_core_rs::engine::SpotiFLACEngine;
-use spotiflac_core_rs::models::{AppConfig, TrackMetadata};
+use spotiflac_core_rs::models::AppConfig;
 use spotiflac_core_rs::progress::{
     DownloadQueueInfo, DownloadStatus, ProgressHandler, ProgressUpdate,
 };
 use spotiflac_core_rs::storage::history::FetchHistoryItem;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_dialog::DialogExt;
 
@@ -174,12 +173,8 @@ pub async fn download_track(
 // ======================================
 
 #[tauri::command]
-pub async fn get_spotify_metadata(url: String) -> Result<TrackMetadata, String> {
-    let client = spotiflac_core_rs::metadata::spotify::SpotifyMetadataClient::new();
-    match client.fetch_track_info_enriched(&url).await {
-        Ok((metadata, _)) => Ok(metadata),
-        Err(e) => Err(e.to_string()),
-    }
+pub async fn get_spotify_metadata(url: String) -> Result<serde_json::Value, String> {
+    crate::metadata_compat::get_spotify_metadata_compat(&url).await
 }
 
 #[tauri::command]
@@ -938,6 +933,33 @@ pub async fn open_folder(path: String) -> Result<(), String> {
     #[cfg(target_os = "linux")]
     std::process::Command::new("xdg-open")
         .arg(dir.to_string_lossy().as_ref())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn open_url(url: String) -> Result<(), String> {
+    if url.trim().is_empty() {
+        return Err("URL is required".to_string());
+    }
+
+    #[cfg(target_os = "windows")]
+    std::process::Command::new("cmd")
+        .args(["/C", "start", "", &url])
+        .spawn()
+        .map_err(|e| e.to_string())?;
+
+    #[cfg(target_os = "macos")]
+    std::process::Command::new("open")
+        .arg(&url)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+
+    #[cfg(target_os = "linux")]
+    std::process::Command::new("xdg-open")
+        .arg(&url)
         .spawn()
         .map_err(|e| e.to_string())?;
 

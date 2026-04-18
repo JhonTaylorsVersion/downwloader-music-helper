@@ -105,12 +105,12 @@ const installFFmpeg = async () => {
   ffmpegStatus.value = "Initializing...";
   
   try {
-    const success = await invoke<boolean>('download_ffmpeg');
-    if (success) {
+    const response = await invoke<{ success: boolean; error?: string }>('download_ffmpeg');
+    if (response.success) {
       toast.success("FFmpeg installed successfully!");
       isFFmpegInstalled.value = true;
     } else {
-      toast.error("Failed to install FFmpeg. Please check logs.");
+      toast.error(response.error || "Failed to install FFmpeg. Please check logs.");
     }
   } catch (err: any) {
     toast.error(`Installation error: ${err}`);
@@ -222,7 +222,7 @@ const handlePageChange = (page: PageType | 'queue') => {
           Platform: {{ osPlatform }}-x64
         </div>
         <DialogFooter class="gap-2 sm:gap-0">
-          <Button variant="ghost" @click="isFFmpegInstalled = true">Later</Button>
+          <Button variant="ghost" @click="isFFmpegInstalled = null">Later</Button>
           <Button @click="installFFmpeg">Install Automatically</Button>
         </DialogFooter>
       </DialogContent>

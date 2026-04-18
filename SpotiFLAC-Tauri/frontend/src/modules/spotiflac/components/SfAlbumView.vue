@@ -3,7 +3,7 @@
   <div class="sf-album-view">
     <!-- Album header card -->
     <div class="sf-card sf-relative">
-      <button v-if="onBack" class="sf-back-btn" @click="$emit('back')">
+      <button v-if="showBack" class="sf-back-btn" @click="$emit('back')">
         <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
         </svg>
@@ -171,7 +171,7 @@ const props = withDefaults(defineProps<{
   onDownloadAllCovers?: (coverUrl: string, trackName: string, artistName: string, albumName: string, folderName?: string, isArtistDiscography?: boolean, position?: number, trackId?: string, albumArtist?: string, releaseDate?: string, discNumber?: number) => void;
   onArtistClick?: (artist: { id: string; name: string; external_urls: string }) => void;
   onTrackClick?: (track: TrackMetadata) => void;
-  onBack?: boolean;
+  showBack?: boolean;
 }>(), {
   searchQuery: '',
   sortBy: 'title-asc',

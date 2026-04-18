@@ -1,0 +1,41 @@
+# SpotiFLAC Tauri Parity Checklist
+
+Last updated: 2026-04-18
+
+Source of truth for parity:
+- `C:\Proyectos\SpotiFLAC-main\frontend\src\App.tsx`
+- `C:\Proyectos\SpotiFLAC-main\frontend\src\hooks\useMetadata.ts`
+- `C:\Proyectos\SpotiFLAC-main\frontend\src\components\SearchBar.tsx`
+- `C:\Proyectos\SpotiFLAC-main\backend\spotify_metadata.go`
+- `C:\Proyectos\SpotiFLAC-main\app.go`
+
+## Phase 1
+
+- [x] Frontend build passes with `npm run build`
+- [x] TypeScript config no longer fails on deprecated `baseUrl`
+- [x] Core Tauri `invoke` calls that were still reparsing JSON now consume real return types
+- [x] FFmpeg install flow reads `{ success, error }` correctly
+- [x] `get_current_ip_info` is consumed as an object, not reparsed
+- [x] `check_track_availability` is consumed as an object, not reparsed
+- [x] Missing shell commands used by sidebar/header are registered in Tauri
+- [x] Fetch history payload shape is aligned between Vue and Rust
+
+## Phase 2
+
+- [x] `useMetadata` in Vue now mirrors the original hook more closely
+- [x] Main shell recovered album confirmation and VPN failure dialogs
+- [x] Main search/fetch page now wires album/artist click handlers closer to the original flow
+- [x] `get_spotify_metadata` supports `track`, `album`, `playlist`, and `artist`
+- [x] Rust metadata response shape matches original `frontend/src/types/api.ts`
+- [ ] Main app shell fully reproduces original page orchestration from `App.tsx`
+- [ ] Unsaved settings dialog exists and works
+- [ ] Search/fetch flow behaves the same as the original shell for every entity type
+- [ ] Artist click resolves and opens discography flow with real backend metadata
+- [ ] Album, playlist, and artist pages render from real backend payloads
+
+## Structural follow-up
+
+- [ ] `spotiflac-core-rs` is moved inside `SpotiFLAC-Tauri`
+- [ ] No cross-import/runtime dependency remains on the legacy app
+- [ ] No React/JSX leftovers remain in Vue templates
+- [ ] `create_m3u8_file` matches original behavior

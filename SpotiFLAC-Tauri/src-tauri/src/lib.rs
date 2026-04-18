@@ -1,3 +1,4 @@
+mod metadata_compat;
 mod commands;
 use commands::{
     AppState, TauriProgressHandler,
@@ -10,6 +11,7 @@ use commands::{
     download_lyrics, download_cover, download_header, download_gallery_image, download_avatar,
     get_download_queue, clear_completed_downloads, clear_all_downloads, export_failed_downloads,
     select_folder, open_config_folder, get_default_download_path, open_folder,
+    open_url,
     check_ffmpeg_installed, download_ffmpeg,
     convert_audio_batch, resample_audio_batch,
     list_audio_files, list_directory_items, preview_rename_files,
@@ -100,6 +102,7 @@ pub fn run() {
         open_config_folder,
         get_default_download_path,
         open_folder,
+        open_url,
         load_settings,
         save_settings,
         // FFmpeg

@@ -11,9 +11,31 @@ import { useHistory } from '../composables/useHistory'; // We'll need this for t
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { ChevronLeft, CloudDownload } from 'lucide-vue-next';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 // Composables
-const { loading, metadata, fetchMetadata, resetMetadata } = useMetadata();
+const {
+  loading,
+  metadata,
+  handleFetchMetadata,
+  resetMetadata,
+  showAlbumDialog,
+  setShowAlbumDialog,
+  selectedAlbum,
+  handleConfirmAlbumFetch,
+  showVpnAdviceDialog,
+  setShowVpnAdviceDialog,
+  handleAlbumClick,
+  handleArtistClick,
+  loadFromCache,
+} = useMetadata();
 const { 
   isDownloading, downloadProgress, currentDownloadInfo, 
   downloadedTracks, downloadTrack, downloadBatch 
@@ -29,12 +51,12 @@ const selectedTracks = ref<string[]>([]);
 
 // Handlers
 const handleFetch = () => {
-  fetchMetadata(url.value);
+  void handleFetchMetadata(url.value);
 };
 
 const handleFetchUrl = (resultUrl: string) => {
   url.value = resultUrl;
-  fetchMetadata(resultUrl);
+  void handleFetchMetadata(resultUrl);
 };
 
 const handleBack = () => {
@@ -128,11 +150,13 @@ const currentView = computed(() => {
       <template v-else>
         <!-- Single Track View -->
         <SfTrackInfo 
-          v-if="currentView === 'track'"
+        v-if="currentView === 'track'"
           :track="metadata.track"
           :is-downloading="isDownloading"
           :downloaded="downloadedTracks.has(metadata.track.spotify_id)"
           @download="handleDownloadAll"
+          @album-click="handleAlbumClick"
+          @artist-click="artist => void handleArtistClick(artist)"
         />
 
         <!-- Album View -->
@@ -140,6 +164,7 @@ const currentView = computed(() => {
           v-else-if="currentView === 'album'"
           :album-info="metadata.album_info"
           :track-list="metadata.track_list"
+          :show-back="true"
           :is-downloading="isDownloading"
           :download-progress="downloadProgress"
           :current-download-info="currentDownloadInfo"
@@ -149,6 +174,9 @@ const currentView = computed(() => {
           @download-selected="handleDownloadBatch"
           @toggle-track="toggleTrack"
           @toggle-select-all="toggleSelectAll"
+          @artist-click="(artist: { id: string; name: string; external_urls: string }) => void handleArtistClick(artist)"
+          @track-click="(track: { external_urls?: string }) => track.external_urls && handleFetchUrl(track.external_urls)"
+          @back="handleBack"
         />
 
         <!-- Playlist View -->
@@ -165,6 +193,8 @@ const currentView = computed(() => {
           @download-selected="handleDownloadBatch"
           @toggle-track="toggleTrack"
           @toggle-select-all="toggleSelectAll"
+          @artist-click="(artist: { id: string; name: string; external_urls: string }) => void handleArtistClick(artist)"
+          @track-click="(track: { external_urls?: string }) => track.external_urls && handleFetchUrl(track.external_urls)"
         />
 
         <!-- Artist View -->
@@ -181,7 +211,8 @@ const currentView = computed(() => {
           @download-all="handleDownloadAll"
           @toggle-track="toggleTrack"
           @toggle-select-all="toggleSelectAll"
-          @album-click="a => handleFetchUrl(a.external_urls)"
+          @album-click="handleAlbumClick"
+          @back="handleBack"
         />
 
         <!-- Welcome View -->
@@ -201,5 +232,54 @@ const currentView = computed(() => {
         </div>
       </template>
     </div>
+
+    <Dialog :open="showAlbumDialog" @update:open="setShowAlbumDialog">
+      <DialogContent class="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>Fetch Album</DialogTitle>
+          <DialogDescription>
+            Do you want to fetch metadata for this album?
+          </DialogDescription>
+        </DialogHeader>
+        <div v-if="selectedAlbum" class="py-2">
+          <p class="font-medium bg-muted/50 rounded-md px-3 py-2">{{ selectedAlbum.name }}</p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" @click="setShowAlbumDialog(false)">
+            Cancel
+          </Button>
+          <Button @click="() => void handleConfirmAlbumFetch()">
+            Fetch Album
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog :open="showVpnAdviceDialog" @update:open="setShowVpnAdviceDialog">
+      <DialogContent class="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Fetch Failed</DialogTitle>
+          <DialogDescription class="space-y-3">
+            <span class="block">
+              Metadata fetch failed. Try using a high-quality VPN such as
+              Surfshark, ExpressVPN, Proton VPN, or a similar service.
+            </span>
+            <span class="block">
+              Choose a location that is not blocked by Spotify or the related
+              service, such as the USA, UK, Germany, Netherlands, or Singapore.
+            </span>
+            <span class="block">
+              If you are already using a VPN, try switching to another server
+              and fetch again.
+            </span>
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button @click="setShowVpnAdviceDialog(false)">
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>
