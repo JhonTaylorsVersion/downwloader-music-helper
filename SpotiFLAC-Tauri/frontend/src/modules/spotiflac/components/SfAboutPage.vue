@@ -6,7 +6,7 @@ import {
   Star, GitFork, Clock, Download, Blocks, Heart, Copy, CircleCheck, Info,
   Github, ExternalLink, Coffee, Wallet
 } from 'lucide-vue-next';
-import { toast } from 'vue-sonner';
+import { toastWithSound as toast } from '../utils/toast-with-sound';
 
 const activeTab = ref<'projects' | 'support'>('projects');
 const repoStats = ref<Record<string, any>>({});

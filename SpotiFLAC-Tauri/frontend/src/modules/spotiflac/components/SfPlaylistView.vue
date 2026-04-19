@@ -24,6 +24,22 @@ const props = withDefaults(defineProps<{
   downloadingTrack?: string | null;
   itemsPerPage?: number;
   currentPage?: number;
+  
+  downloadedLyrics?: Set<string>;
+  failedLyrics?: Set<string>;
+  skippedLyrics?: Set<string>;
+  downloadingLyricsTrack?: string | null;
+  isBulkDownloadingLyrics?: boolean;
+  
+  downloadedCovers?: Set<string>;
+  failedCovers?: Set<string>;
+  skippedCovers?: Set<string>;
+  downloadingCoverTrack?: string | null;
+  isBulkDownloadingCovers?: boolean;
+  
+  availabilityMap?: Map<string, any>;
+  checkingAvailability?: boolean;
+  checkingTrackId?: string | null;
 }>(), {
   failedTracks: () => new Set(),
   skippedTracks: () => new Set(),
@@ -40,7 +56,12 @@ const emit = defineEmits<{
   (e: 'openFolder'): void;
   (e: 'toggleTrack', id: string): void;
   (e: 'toggleSelectAll'): void;
-  (e: 'downloadTrack', id: string): void;
+  (e: 'downloadTrack', ...args: any[]): void;
+  (e: 'downloadLyrics', ...args: any[]): void;
+  (e: 'downloadCover', ...args: any[]): void;
+  (e: 'checkAvailability', id: string): void;
+  (e: 'downloadAllLyrics'): void;
+  (e: 'downloadAllCovers'): void;
 }>();
 
 const formatFollowers = (count: number) => {
@@ -109,10 +130,24 @@ const formatFollowers = (count: number) => {
          :tracks="trackList"
          :selected-tracks="selectedTracks"
          :downloaded-tracks="downloadedTracks"
-         :downloading-track="isDownloading ? currentDownloadInfo?.id : null"
-         @toggle-track="id => emit('toggleTrack', id)"
-         @toggle-select-all="emit('toggleSelectAll')"
-         @download-track="(id, name, artists, album) => emit('downloadTrack', id)"
+        :downloading-track="isDownloading ? currentDownloadInfo?.id : null"
+        :downloaded-lyrics="downloadedLyrics"
+        :failed-lyrics="failedLyrics"
+        :skipped-lyrics="skippedLyrics"
+        :downloading-lyrics-track="downloadingLyricsTrack"
+        :downloaded-covers="downloadedCovers"
+        :failed-covers="failedCovers"
+        :skipped-covers="skippedCovers"
+        :downloading-cover-track="downloadingCoverTrack"
+        :availability-map="availabilityMap"
+        :checking-availability="checkingAvailability"
+        :checking-track-id="checkingTrackId"
+        @toggle-track="id => emit('toggleTrack', id)"
+        @toggle-select-all="emit('toggleSelectAll')"
+        @download-track="(...args: any[]) => emit('downloadTrack', ...args)"
+        @download-lyrics="(...args: any[]) => emit('downloadLyrics', ...args)"
+        @download-cover="(...args: any[]) => emit('downloadCover', ...args)"
+        @check-availability="id => emit('checkAvailability', id)"
        />
     </Card>
   </div>

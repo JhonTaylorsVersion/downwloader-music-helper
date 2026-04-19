@@ -3,6 +3,7 @@ use std::sync::{Arc, RwLock};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
 pub enum DownloadStatus {
     Queued,
     Downloading,
@@ -33,6 +34,14 @@ pub struct ProgressUpdate {
     pub item_id: String,
     pub status: DownloadStatus,
     pub progress_mb: f64,
+    pub speed_mbps: f64,
+}
+
+/// Mirrors Go's ProgressInfo struct
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProgressInfo {
+    pub is_downloading: bool,
+    pub mb_downloaded: f64,
     pub speed_mbps: f64,
 }
 
@@ -196,6 +205,13 @@ impl ProgressManager {
             item.error_message = Some(error);
             item.speed_mbps = 0.0;
         }
+        let all_done = state.queue.iter().all(|i| {
+            matches!(i.status, DownloadStatus::Completed | DownloadStatus::Failed | DownloadStatus::Skipped)
+        });
+        if all_done {
+            state.is_downloading = false;
+            state.current_speed = 0.0;
+        }
         drop(state);
 
         let h_lock = self.handler.read().unwrap();
@@ -211,6 +227,14 @@ impl ProgressManager {
             item.status = DownloadStatus::Skipped;
             item.end_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
             item.file_path = Some(file_path);
+            item.speed_mbps = 0.0;
+        }
+        let all_done = state.queue.iter().all(|i| {
+            matches!(i.status, DownloadStatus::Completed | DownloadStatus::Failed | DownloadStatus::Skipped)
+        });
+        if all_done {
+            state.is_downloading = false;
+            state.current_speed = 0.0;
         }
         drop(state);
 
@@ -296,6 +320,23 @@ impl ProgressManager {
             completed_count: completed,
             failed_count: failed,
             skipped_count: skipped,
+        }
+    }
+
+    /// Mirrors Go's GetDownloadProgress — returns current active download progress
+    pub fn get_progress_info(&self) -> ProgressInfo {
+        let state = self.state.read().unwrap();
+        let current_progress = state
+            .queue
+            .iter()
+            .find(|item| item.status == DownloadStatus::Downloading)
+            .map(|item| item.progress_mb)
+            .unwrap_or(0.0);
+
+        ProgressInfo {
+            is_downloading: state.is_downloading,
+            mb_downloaded: current_progress,
+            speed_mbps: state.current_speed,
         }
     }
 }

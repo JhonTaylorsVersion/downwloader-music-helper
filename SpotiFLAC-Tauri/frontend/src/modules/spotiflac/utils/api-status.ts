@@ -53,7 +53,7 @@ function statusFromUnifiedValue(value: string | undefined): ApiCheckStatus {
     return value === "up" ? "online" : "offline";
 }
 async function fetchUnifiedStatuses(forceRefresh: boolean): Promise<Pick<ApiStatusState, "statuses">> {
-    const response: string = await invoke("fetch_unified_api_status", { forceRefresh });
+    const response: string = await invoke("fetch_unified_api_status", { force_refresh: forceRefresh });
     const payload = JSON.parse(response) as SpotiFLACUnifiedStatusResponse;
     const tidalStatus = statusFromUnifiedValue(payload.tidal);
     return {
@@ -75,7 +75,7 @@ async function fetchUnifiedStatuses(forceRefresh: boolean): Promise<Pick<ApiStat
 }
 async function checkMusicBrainzStatus(): Promise<ApiCheckStatus> {
     try {
-        const isOnline = await withTimeout(invoke("check_api_status", { apiType: "musicbrainz", apiUrl: "https://musicbrainz.org" }), CHECK_TIMEOUT_MS, "API status check timed out after 10 seconds for MusicBrainz");
+        const isOnline = await withTimeout(invoke("check_api_status", { api_type: "musicbrainz", api_url: "https://musicbrainz.org" }), CHECK_TIMEOUT_MS, "API status check timed out after 10 seconds for MusicBrainz");
         return isOnline ? "online" : "offline";
     }
     catch {

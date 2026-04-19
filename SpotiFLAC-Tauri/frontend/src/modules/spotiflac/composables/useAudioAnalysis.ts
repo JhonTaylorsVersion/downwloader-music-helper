@@ -16,7 +16,7 @@ import {
   pcm16MonoArrayBufferToFloat32Samples 
 } from '../utils/flac-analysis';
 import { loadAudioAnalysisPreferences } from '../utils/audio-analysis-preferences';
-import { toast } from 'vue-sonner';
+import { toastWithSound as toast } from '../utils/toast-with-sound';
 
 // Replicating React's module-level persistence
 const sessionResult = ref<AnalysisResult | null>(null);

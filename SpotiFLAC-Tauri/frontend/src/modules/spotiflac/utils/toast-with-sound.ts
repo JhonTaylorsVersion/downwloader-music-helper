@@ -6,8 +6,21 @@ const toastStyle = {
     className: "font-mono lowercase",
 };
 type ToastData = Parameters<typeof toast.success>[1];
-const isSfxEnabled = () => getSettings().sfxEnabled;
+
+// Helper to check settings safely
+const isSfxEnabled = () => {
+    try {
+        return getSettings().sfxEnabled;
+    } catch {
+        return true; // Default to true if settings aren't ready
+    }
+};
+
 export const toastWithSound = {
+    // Warm up the audio context (required by browsers)
+    warmUp: () => {
+        playInfoSound(); // This will trigger the AudioContext creation/resume
+    },
     success: (message: string, data?: ToastData) => {
         const msg = message.toLowerCase();
         logger.success(msg);

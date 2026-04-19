@@ -383,7 +383,7 @@ const tabs: { key: ResultTab; label: string }[] = [
 
 <template>
   <div class="space-y-4 w-full min-w-0">
-    <div class="flex gap-2 min-w-0">
+    <div class="flex items-center gap-2 min-w-0">
       <Tooltip>
         <Button
           variant="outline"
@@ -434,7 +434,7 @@ const tabs: { key: ResultTab; label: string }[] = [
         </template>
       </div>
 
-      <template v-if="!searchMode">
+      <div v-if="!searchMode" class="flex items-center gap-2 shrink-0">
         <Select
           v-if="showRegionSelector"
           :model-value="region"
@@ -453,7 +453,7 @@ const tabs: { key: ResultTab; label: string }[] = [
           </SelectContent>
         </Select>
 
-        <Button @click="handleFetchWithValidation" :disabled="loading">
+        <Button class="shrink-0" @click="handleFetchWithValidation" :disabled="loading">
           <template v-if="loading">
             <Spinner size="sm" />
             Fetching...
@@ -463,7 +463,7 @@ const tabs: { key: ResultTab; label: string }[] = [
             Fetch
           </template>
         </Button>
-      </template>
+      </div>
     </div>
 
     <SfFetchHistory
@@ -504,7 +504,7 @@ const tabs: { key: ResultTab; label: string }[] = [
       </div>
 
       <div v-else-if="hasAnyResults" class="min-w-0">
-        <div class="flex gap-1 border-b mb-4 min-w-0 overflow-x-auto">
+        <div class="sf-search-tabs flex gap-8 border-b border-muted mb-6 px-2 overflow-x-auto no-scrollbar">
           <button
             v-for="tab in tabs"
             :key="tab.key"
@@ -512,68 +512,74 @@ const tabs: { key: ResultTab; label: string }[] = [
             type="button"
             @click="activeTab = tab.key"
             :class="cn(
-              'px-4 py-2 text-sm font-medium transition-colors cursor-pointer border-b-2 -mb-px whitespace-nowrap',
+              'pb-3 text-sm font-bold transition-all relative whitespace-nowrap group cursor-pointer',
               activeTab === tab.key
-                ? 'border-primary text-foreground'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
+                ? 'text-foreground'
+                : 'text-muted-foreground hover:text-foreground'
             )"
           >
             {{ tab.label }} ({{ getTabCount(tab.key) }})
+            <div 
+              v-if="activeTab === tab.key" 
+              class="absolute bottom-0 left-0 right-0 h-[3px] bg-primary rounded-t-full animate-in slide-in-from-left-full duration-300" 
+            />
           </button>
         </div>
 
-        <div class="flex gap-2 mb-4 max-md:flex-col min-w-0">
-          <div class="relative flex-1 min-w-0">
-            <Search class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <div class="flex items-center gap-4 mb-6">
+          <div class="relative flex-1 group">
+            <Search class="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
             <Input
               v-model="resultFilter"
               :placeholder="`Search ${activeTab}...`"
-              class="pl-10 pr-8"
+              class="pl-11 pr-10 h-11 bg-muted/30 border-none shadow-none focus-visible:ring-1 focus-visible:ring-primary/20 rounded-xl"
             />
             <button
               v-if="resultFilter"
               @click="resultFilter = ''"
-              class="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+              class="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
             >
               <XCircle class="h-4 w-4" />
             </button>
           </div>
-
-          <Select :model-value="sortOrders[activeTab]" @update:model-value="(v) => (sortOrders[activeTab] = v)">
-            <SelectTrigger class="w-[170px] max-md:w-full bg-background gap-1.5 shrink-0">
-              <ArrowUpDown class="h-4 w-4 text-muted-foreground" />
-              <SelectValue placeholder="Sort by" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="default">Default</SelectItem>
-              <template v-if="activeTab === 'tracks'">
-                <SelectItem value="title-asc">Title (A-Z)</SelectItem>
-                <SelectItem value="title-desc">Title (Z-A)</SelectItem>
-                <SelectItem value="artist-asc">Artist (A-Z)</SelectItem>
-                <SelectItem value="artist-desc">Artist (Z-A)</SelectItem>
-                <SelectItem value="duration-desc">Duration (Longest)</SelectItem>
-                <SelectItem value="duration-asc">Duration (Shortest)</SelectItem>
-              </template>
-              <template v-if="activeTab === 'albums'">
-                <SelectItem value="title-asc">Title (A-Z)</SelectItem>
-                <SelectItem value="title-desc">Title (Z-A)</SelectItem>
-                <SelectItem value="artist-asc">Artist (A-Z)</SelectItem>
-                <SelectItem value="artist-desc">Artist (Z-A)</SelectItem>
-                <SelectItem value="year-desc">Year (Newest)</SelectItem>
-                <SelectItem value="year-asc">Year (Oldest)</SelectItem>
-              </template>
-              <template v-if="activeTab === 'artists'">
-                <SelectItem value="name-asc">Name (A-Z)</SelectItem>
-                <SelectItem value="name-desc">Name (Z-A)</SelectItem>
-              </template>
-              <template v-if="activeTab === 'playlists'">
-                <SelectItem value="title-asc">Title (A-Z)</SelectItem>
-                <SelectItem value="title-desc">Title (Z-A)</SelectItem>
-                <SelectItem value="owner-asc">Owner (A-Z)</SelectItem>
-                <SelectItem value="owner-desc">Owner (Z-A)</SelectItem>
-              </template>
-            </SelectContent>
-          </Select>
+          
+          <div class="flex items-center gap-2">
+            <ArrowUpDown class="h-4 w-4 text-muted-foreground" />
+            <Select :model-value="sortOrders[activeTab]" @update:model-value="(v) => (sortOrders[activeTab] = v)">
+              <SelectTrigger class="w-[180px] h-11 bg-muted/30 border-none shadow-none focus:ring-1 focus:ring-primary/20 rounded-xl font-bold">
+                <SelectValue placeholder="Sort by" />
+              </SelectTrigger>
+              <SelectContent class="rounded-2xl border-none shadow-2xl">
+                <SelectItem value="default" class="rounded-lg">Default</SelectItem>
+                <template v-if="activeTab === 'tracks'">
+                  <SelectItem value="title-asc" class="rounded-lg">Title (A-Z)</SelectItem>
+                  <SelectItem value="title-desc" class="rounded-lg">Title (Z-A)</SelectItem>
+                  <SelectItem value="artist-asc" class="rounded-lg">Artist (A-Z)</SelectItem>
+                  <SelectItem value="artist-desc" class="rounded-lg">Artist (Z-A)</SelectItem>
+                  <SelectItem value="duration-desc" class="rounded-lg">Duration (Longest)</SelectItem>
+                  <SelectItem value="duration-asc" class="rounded-lg">Duration (Shortest)</SelectItem>
+                </template>
+                <template v-if="activeTab === 'albums'">
+                  <SelectItem value="title-asc">Title (A-Z)</SelectItem>
+                  <SelectItem value="title-desc">Title (Z-A)</SelectItem>
+                  <SelectItem value="artist-asc">Artist (A-Z)</SelectItem>
+                  <SelectItem value="artist-desc">Artist (Z-A)</SelectItem>
+                  <SelectItem value="year-desc">Year (Newest)</SelectItem>
+                  <SelectItem value="year-asc">Year (Oldest)</SelectItem>
+                </template>
+                <template v-if="activeTab === 'artists'">
+                  <SelectItem value="name-asc">Name (A-Z)</SelectItem>
+                  <SelectItem value="name-desc">Name (Z-A)</SelectItem>
+                </template>
+                <template v-if="activeTab === 'playlists'">
+                  <SelectItem value="title-asc">Title (A-Z)</SelectItem>
+                  <SelectItem value="title-desc">Title (Z-A)</SelectItem>
+                  <SelectItem value="owner-asc">Owner (A-Z)</SelectItem>
+                  <SelectItem value="owner-desc">Owner (Z-A)</SelectItem>
+                </template>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         <div class="grid gap-2 min-w-0">
@@ -582,32 +588,32 @@ const tabs: { key: ResultTab; label: string }[] = [
               v-for="track in sortedResults.tracks"
               :key="track.id"
               type="button"
-              class="flex items-center gap-3 p-3 rounded-lg bg-card hover:bg-accent border cursor-pointer text-left transition-colors min-w-0"
+              class="flex items-center gap-4 p-4 rounded-2xl bg-muted/10 hover:bg-muted/30 border border-transparent hover:border-muted/50 cursor-pointer text-left transition-all duration-300 min-w-0 shadow-sm"
               @click="handleResultClick(track.external_urls)"
             >
               <img
                 v-if="track.images"
                 :src="track.images"
                 alt=""
-                class="w-12 h-12 rounded object-cover shrink-0"
+                class="w-14 h-14 rounded-xl object-cover shrink-0 shadow-md"
               />
-              <div v-else class="w-12 h-12 rounded bg-muted shrink-0" />
+              <div v-else class="w-14 h-14 rounded-xl bg-muted shrink-0" />
               <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-1.5 min-w-0">
-                  <p class="font-medium truncate">{{ track.name }}</p>
+                <div class="flex items-center gap-2 min-w-0 mb-0.5">
+                  <p class="text-base font-black truncate tracking-tight">{{ track.name }}</p>
                   <span
                     v-if="track.is_explicit"
-                    class="flex items-center justify-center min-w-[16px] h-[16px] rounded bg-red-600 text-[10px] font-bold text-white leading-none shrink-0"
+                    class="flex items-center justify-center min-w-[18px] h-[18px] rounded-sm bg-destructive text-[10px] font-black text-destructive-foreground leading-none shrink-0"
                     title="Explicit"
                   >
                     E
                   </span>
                 </div>
-                <p class="text-sm text-muted-foreground truncate">
+                <p class="text-sm text-muted-foreground font-bold truncate opacity-60">
                   {{ track.artists }}
                 </p>
               </div>
-              <span class="text-sm text-muted-foreground shrink-0">
+              <span class="text-sm text-muted-foreground font-mono font-medium shrink-0 opacity-40">
                 {{ formatDuration(track.duration_ms || 0) }}
               </span>
             </button>
@@ -618,23 +624,23 @@ const tabs: { key: ResultTab; label: string }[] = [
               v-for="album in sortedResults.albums"
               :key="album.id"
               type="button"
-              class="flex items-center gap-3 p-3 rounded-lg bg-card hover:bg-accent border cursor-pointer text-left transition-colors min-w-0"
+              class="flex items-center gap-4 p-4 rounded-2xl bg-muted/10 hover:bg-muted/30 border border-transparent hover:border-muted/50 cursor-pointer text-left transition-all duration-300 min-w-0 shadow-sm"
               @click="handleResultClick(album.external_urls)"
             >
               <img
                 v-if="album.images"
                 :src="album.images"
                 alt=""
-                class="w-12 h-12 rounded object-cover shrink-0"
+                class="w-14 h-14 rounded-xl object-cover shrink-0 shadow-md"
               />
-              <div v-else class="w-12 h-12 rounded bg-muted shrink-0" />
+              <div v-else class="w-14 h-14 rounded-xl bg-muted shrink-0" />
               <div class="flex-1 min-w-0">
-                <p class="font-medium truncate">{{ album.name }}</p>
-                <p class="text-sm text-muted-foreground truncate">
+                <p class="text-base font-black truncate tracking-tight">{{ album.name }}</p>
+                <p class="text-sm text-muted-foreground font-bold truncate opacity-60">
                   {{ album.artists }}
                 </p>
               </div>
-              <span class="text-sm text-muted-foreground shrink-0">
+              <span class="text-sm text-muted-foreground font-medium shrink-0 opacity-40">
                 {{ album.release_date || '' }}
               </span>
             </button>
@@ -645,19 +651,19 @@ const tabs: { key: ResultTab; label: string }[] = [
               v-for="artist in sortedResults.artists"
               :key="artist.id"
               type="button"
-              class="flex items-center gap-3 p-3 rounded-lg bg-card hover:bg-accent border cursor-pointer text-left transition-colors min-w-0"
+              class="flex items-center gap-4 p-4 rounded-2xl bg-muted/10 hover:bg-muted/30 border border-transparent hover:border-muted/50 cursor-pointer text-left transition-all duration-300 min-w-0 shadow-sm"
               @click="handleResultClick(artist.external_urls)"
             >
               <img
                 v-if="artist.images"
                 :src="artist.images"
                 alt=""
-                class="w-12 h-12 rounded-full object-cover shrink-0"
+                class="w-14 h-14 rounded-full object-cover shrink-0 shadow-md"
               />
-              <div v-else class="w-12 h-12 rounded-full bg-muted shrink-0" />
+              <div v-else class="w-14 h-14 rounded-full bg-muted shrink-0" />
               <div class="flex-1 min-w-0">
-                <p class="font-medium truncate">{{ artist.name }}</p>
-                <p class="text-sm text-muted-foreground">Artist</p>
+                <p class="text-base font-black truncate tracking-tight">{{ artist.name }}</p>
+                <p class="text-sm text-muted-foreground font-bold opacity-60 tracking-wider uppercase text-[10px]">Artist</p>
               </div>
             </button>
           </template>
@@ -667,19 +673,19 @@ const tabs: { key: ResultTab; label: string }[] = [
               v-for="playlist in sortedResults.playlists"
               :key="playlist.id"
               type="button"
-              class="flex items-center gap-3 p-3 rounded-lg bg-card hover:bg-accent border cursor-pointer text-left transition-colors min-w-0"
+              class="flex items-center gap-4 p-4 rounded-2xl bg-muted/10 hover:bg-muted/30 border border-transparent hover:border-muted/50 cursor-pointer text-left transition-all duration-300 min-w-0 shadow-sm"
               @click="handleResultClick(playlist.external_urls)"
             >
               <img
                 v-if="playlist.images"
                 :src="playlist.images"
                 alt=""
-                class="w-12 h-12 rounded object-cover shrink-0"
+                class="w-14 h-14 rounded-xl object-cover shrink-0 shadow-md"
               />
-              <div v-else class="w-12 h-12 rounded bg-muted shrink-0" />
+              <div v-else class="w-14 h-14 rounded-xl bg-muted shrink-0" />
               <div class="flex-1 min-w-0">
-                <p class="font-medium truncate">{{ playlist.name }}</p>
-                <p class="text-sm text-muted-foreground truncate">
+                <p class="text-base font-black truncate tracking-tight">{{ playlist.name }}</p>
+                <p class="text-sm text-muted-foreground font-bold truncate opacity-60">
                   {{ playlist.owner || '' }}
                 </p>
               </div>
@@ -732,3 +738,30 @@ const tabs: { key: ResultTab; label: string }[] = [
     </Dialog>
   </div>
 </template>
+
+<style scoped>
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.sf-search-tabs {
+  scrollbar-width: none;
+}
+
+.sf-search-tabs button {
+  outline: none !important;
+}
+
+/* Subtle result item transition */
+.grid > button {
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.grid > button:active {
+  transform: scale(0.985);
+}
+</style>

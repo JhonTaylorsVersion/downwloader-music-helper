@@ -70,12 +70,13 @@ const emit = defineEmits<{
   ],
   downloadLyrics: [
     spotifyId: string, name: string, artists: string, albumName?: string, 
+    playlistName?: string, isArtistDiscography?: boolean, position?: number,
     albumArtist?: string, releaseDate?: string, discNumber?: number
   ],
   checkAvailability: [spotifyId: string],
   downloadCover: [
     coverUrl: string, trackName: string, artistName: string, albumName?: string, 
-    playlistName?: string, position?: number, trackId?: string, 
+    playlistName?: string, isArtistDiscography?: boolean, position?: number, trackId?: string, 
     albumArtist?: string, releaseDate?: string, discNumber?: number
   ],
   openFolder: [],
@@ -127,8 +128,8 @@ const handleDownloadLyrics = () => {
   if (props.track.spotify_id) {
     emit('downloadLyrics', 
       props.track.spotify_id, props.track.name, props.track.artists, 
-      props.track.album_name, props.track.album_artist, props.track.release_date, 
-      props.track.disc_number
+      props.track.album_name, undefined, false, props.track.track_number,
+      props.track.album_artist, props.track.release_date, props.track.disc_number
     );
   }
 };
@@ -143,8 +144,8 @@ const handleDownloadCover = () => {
   if (props.track.images) {
     emit('downloadCover', 
       props.track.images, props.track.name, props.track.artists, 
-      props.track.album_name, undefined, undefined, props.track.spotify_id, 
-      props.track.album_artist, props.track.release_date, props.track.disc_number
+      props.track.album_name, undefined, false, props.track.track_number,
+      props.track.spotify_id, props.track.album_artist, props.track.release_date, props.track.disc_number
     );
   }
 };
@@ -199,12 +200,12 @@ const handleDownloadCover = () => {
             </p>
           </div>
           
-          <div class="grid grid-cols-2 gap-3 text-sm">
-            <div class="space-y-1">
+          <div class="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
+            <div class="space-y-3">
               <div>
-                <p class="text-xs text-muted-foreground">Album</p>
-                <p class="font-medium truncate">
-                  <span v-if="hasAlbumClick" class="cursor-pointer hover:underline" @click="emit('albumClick', { id: track.album_id!, name: track.album_name, external_urls: track.album_url! })">
+                <p class="text-[10px] uppercase font-bold tracking-wider text-muted-foreground/60 mb-0.5">Album</p>
+                <p class="font-medium truncate leading-tight">
+                  <span v-if="hasAlbumClick" class="cursor-pointer hover:underline text-primary/90" @click="emit('albumClick', { id: track.album_id!, name: track.album_name, external_urls: track.album_url! })">
                     {{ track.album_name }}
                   </span>
                   <span v-else>
@@ -213,21 +214,31 @@ const handleDownloadCover = () => {
                 </p>
               </div>
               
+              <div v-if="track.isrc">
+                <p class="text-[10px] uppercase font-bold tracking-wider text-muted-foreground/60 mb-0.5">ISRC</p>
+                <p class="font-mono text-xs">{{ track.isrc }}</p>
+              </div>
+
               <div v-if="track.plays">
-                <p class="text-xs text-muted-foreground">Total Plays</p>
-                <p class="font-medium">{{ formatPlays(track.plays) }}</p>
+                <p class="text-[10px] uppercase font-bold tracking-wider text-muted-foreground/60 mb-0.5">Total Plays</p>
+                <p class="font-medium tabular-nums">{{ formatPlays(track.plays) }}</p>
               </div>
             </div>
             
-            <div class="space-y-1">
+            <div class="space-y-3">
               <div>
-                <p class="text-xs text-muted-foreground">Release Date</p>
-                <p class="font-medium">{{ track.release_date }}</p>
+                <p class="text-[10px] uppercase font-bold tracking-wider text-muted-foreground/60 mb-0.5">Release Date</p>
+                <p class="font-medium uppercase">{{ track.release_date }}</p>
               </div>
               
+              <div v-if="track.publisher">
+                <p class="text-[10px] uppercase font-bold tracking-wider text-muted-foreground/60 mb-0.5">Publisher</p>
+                <p class="font-medium truncate leading-tight" :title="track.publisher">{{ track.publisher }}</p>
+              </div>
+
               <div v-if="track.copyright">
-                <p class="text-xs text-muted-foreground">Copyright</p>
-                <p class="font-medium truncate" :title="track.copyright">
+                <p class="text-[10px] uppercase font-bold tracking-wider text-muted-foreground/60 mb-0.5">Copyright</p>
+                <p class="text-[11px] text-muted-foreground leading-snug line-clamp-2" :title="track.copyright">
                   {{ track.copyright }}
                 </p>
               </div>

@@ -78,7 +78,15 @@ export const useDownloadStore = defineStore('download', {
                     item.progress = data.progress_mb;
                     item.speed = data.speed_mbps;
                 }
-                this.queueInfo.current_speed = data.speed_mbps;
+                
+                // Aggregated stats
+                this.queueInfo.current_speed = this.queueInfo.queue
+                    .filter(i => i.status === 'downloading')
+                    .reduce((acc, curr) => acc + (curr.speed || 0), 0);
+                
+                this.queueInfo.total_downloaded = this.queueInfo.queue
+                    .reduce((acc, curr) => acc + (curr.progress || 0), 0);
+
                 if (data.status === 'downloading') {
                     this.queueInfo.is_downloading = true;
                 }

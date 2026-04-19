@@ -3,6 +3,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use spotiflac_core_rs::isrc::{spotify_id, LinkResolver};
 use spotiflac_core_rs::metadata::spotify::SpotifyMetadataClient;
+use futures::StreamExt;
 
 type CompatResult<T> = std::result::Result<T, String>;
 
@@ -167,6 +168,7 @@ enum SpotifyEntity {
     Artist(String),
 }
 
+#[derive(Clone)]
 struct MetadataCompatClient {
     http: Client,
     token: String,
@@ -228,7 +230,7 @@ pub async fn get_spotify_metadata_compat(url: &str) -> Result<Value, String> {
 
     let value = match entity {
         SpotifyEntity::Track(track_id) => serde_json::to_value(TrackResponseCompat {
-            track: fetch_track_compat(&compat, &track_id, None, None).await?,
+            track: fetch_track_compat(&compat, &track_id, None, None, None).await?,
         }),
         SpotifyEntity::Album(album_id) => {
             serde_json::to_value(fetch_album_compat(&compat, &album_id).await?)
@@ -246,24 +248,119 @@ pub async fn get_spotify_metadata_compat(url: &str) -> Result<Value, String> {
 }
 
 async fn fetch_track_compat(
-    _compat: &MetadataCompatClient,
+    compat: &MetadataCompatClient,
     track_id: &str,
+    pre_fetched_node: Option<&Value>,
     fallback_album: Option<&Value>,
     status: Option<String>,
 ) -> CompatResult<TrackMetadataCompat> {
     let metadata_client = SpotifyMetadataClient::new();
-    let (track, _) = metadata_client
-        .fetch_track_info_enriched(&format!("https://open.spotify.com/track/{}", track_id))
-        .await
-        .map_err(|e| e.to_string())?;
 
-    let album_id = fallback_album
+    let queried_track = if pre_fetched_node.is_none() {
+        Some(
+            compat
+                .query(
+                    "getTrack",
+                    json!({
+                        "uri": format!("spotify:track:{}", track_id),
+                    }),
+                    "612585ae06ba435ad26369870deaae23b5c8800a256cd8a57e08eddc25a37294",
+                )
+                .await?,
+        )
+    } else {
+        None
+    };
+
+    let resolved_track_node = pre_fetched_node.or_else(|| {
+        queried_track
+            .as_ref()
+            .and_then(|payload| payload.pointer("/data/trackUnion"))
+    });
+    let resolved_album_node = fallback_album.or_else(|| {
+        resolved_track_node.and_then(|node| node.get("albumOfTrack"))
+    });
+
+    let (mut track, first_artist_id, mut plays) = if let Some(node) = resolved_track_node {
+        metadata_client
+            .parse_single_track_node(node, resolved_album_node.unwrap_or(&Value::Null))
+            .map_err(|e| e.to_string())?
+    } else {
+        metadata_client
+            .fetch_track_info_enriched(&format!("https://open.spotify.com/track/{}", track_id))
+            .await
+            .map_err(|e| e.to_string())?
+    };
+
+    if pre_fetched_node.is_none() {
+        if let Ok((enriched_track, _, enriched_plays)) = metadata_client
+            .fetch_track_info_enriched(&format!("https://open.spotify.com/track/{}", track_id))
+            .await
+        {
+            if track.isrc.is_none() {
+                track.isrc = enriched_track.isrc;
+            }
+            if track.upc.is_none() {
+                track.upc = enriched_track.upc;
+            }
+            if track.label.is_none() {
+                track.label = enriched_track.label;
+            }
+            if track.composer.is_none() {
+                track.composer = enriched_track.composer;
+            }
+            if track.album_artist.is_none() {
+                track.album_artist = enriched_track.album_artist;
+            }
+            if track.total_tracks.is_none() {
+                track.total_tracks = enriched_track.total_tracks;
+            }
+            if track.total_discs.is_none() {
+                track.total_discs = enriched_track.total_discs;
+            }
+            if track.copyright.is_none() {
+                track.copyright = enriched_track.copyright;
+            }
+            if track.cover_url.is_none() {
+                track.cover_url = enriched_track.cover_url;
+            }
+            if track.release_date.is_none() {
+                track.release_date = enriched_track.release_date;
+            }
+            if track.spotify_url.is_none() {
+                track.spotify_url = enriched_track.spotify_url;
+            }
+            if track.album == "Unknown Album" || track.album.is_empty() {
+                track.album = enriched_track.album;
+            }
+            if track.artist == "Unknown Artist" || track.artist.is_empty() {
+                track.artist = enriched_track.artist;
+            }
+            if track.title == "Unknown Track" || track.title.is_empty() {
+                track.title = enriched_track.title;
+            }
+            if track.duration_ms == 0 {
+                track.duration_ms = enriched_track.duration_ms;
+            }
+            if plays.is_none() {
+                plays = enriched_plays;
+            }
+        }
+    }
+
+    if (track.copyright.is_none() || track.copyright.as_deref() == Some(""))
+        && resolved_album_node.is_some()
+    {
+        track.copyright = extract_album_copyright(resolved_album_node);
+    }
+
+    let album_id = resolved_album_node
         .and_then(|album| extract_id(album))
         .or_else(|| track.spotify_url.as_ref().and_then(|_| None));
 
-    let album_name = if track.album.is_empty() {
-        fallback_album
-            .and_then(|v| json_pointer_string(v, "/name"))
+    let album_name = if track.album.is_empty() || track.album == "Unknown Album" {
+        resolved_album_node
+            .and_then(|v| json_pointer_string(v, "/name").or_else(|| v.get("name").and_then(Value::as_str)))
             .unwrap_or("Unknown Album")
             .to_string()
     } else {
@@ -274,14 +371,18 @@ async fn fetch_track_compat(
         .as_ref()
         .map(|id| format!("https://open.spotify.com/album/{}", id));
 
-    let artist_items = fallback_album
-        .and_then(|album| {
-            album
-                .pointer("/artists/items")
-                .or_else(|| album.get("artists"))
+    let artist_items = resolved_track_node
+        .map(track_artist_items)
+        .filter(|items| !items.is_empty())
+        .or_else(|| {
+            resolved_album_node.and_then(|album| {
+                album
+                    .pointer("/artists/items")
+                    .or_else(|| album.get("artists"))
+                    .and_then(Value::as_array)
+                    .cloned()
+            })
         })
-        .and_then(Value::as_array)
-        .cloned()
         .unwrap_or_default();
 
     let artists_data = if artist_items.is_empty() {
@@ -317,7 +418,7 @@ async fn fetch_track_compat(
         external_urls: track
             .spotify_url
             .unwrap_or_else(|| format!("https://open.spotify.com/track/{}", track_id)),
-        album_type: fallback_album.and_then(|album| {
+        album_type: resolved_album_node.and_then(|album| {
             json_pointer_string(album, "/type")
                 .or_else(|| json_pointer_string(album, "/albumType"))
                 .map(ToOwned::to_owned)
@@ -333,7 +434,7 @@ async fn fetch_track_compat(
         copyright: track.copyright,
         publisher: track.label,
         composer: track.composer,
-        plays: None,
+        plays,
         preview_url,
         status,
         is_explicit: track.is_explicit,
@@ -398,7 +499,7 @@ async fn fetch_album_compat(
             .or_else(|| item.get("item"))
             .unwrap_or(&item);
         if let Some(track_id) = extract_id(node) {
-            tracks.push(fetch_track_compat(compat, &track_id, Some(album_union), None).await?);
+            tracks.push(fetch_track_compat(compat, &track_id, Some(node), Some(album_union), None).await?);
         }
     }
 
@@ -458,7 +559,7 @@ async fn fetch_playlist_compat(
             .unwrap_or(&item);
 
         if let Some(track_id) = extract_id(node) {
-            track_list.push(fetch_track_compat(compat, &track_id, None, status).await?);
+            track_list.push(fetch_track_compat(compat, &track_id, Some(node), None, status).await?);
         }
     }
 
@@ -552,40 +653,58 @@ async fn fetch_artist_discography_compat(
     let mut album_list = Vec::new();
     let mut track_list = Vec::new();
 
-    for item in album_items {
+    let compat_clone = compat.clone();
+    let artist_name_clone = artist_name.clone();
+
+    let mut album_results = futures::stream::iter(album_items.into_iter().filter_map(|item| {
         let album_node = item
             .pointer("/releases/items/0")
             .or_else(|| item.get("item"))
-            .unwrap_or(&item);
-        if let Some(album_id) = extract_id(album_node) {
-            album_list.push(DiscographyAlbumCompat {
+            .unwrap_or(&item)
+            .clone();
+        extract_id(&album_node).map(|id| (id, album_node))
+    }))
+    .map(|(album_id, album_node)| {
+        let c = compat_clone.clone();
+        let an = artist_name_clone.clone();
+        async move {
+            let disc_album = DiscographyAlbumCompat {
                 id: album_id.clone(),
-                name: json_pointer_string(album_node, "/name")
+                name: json_pointer_string(&album_node, "/name")
                     .unwrap_or("Unknown Album")
                     .to_string(),
-                album_type: json_pointer_string(album_node, "/type")
-                    .or_else(|| json_pointer_string(album_node, "/albumType"))
+                album_type: json_pointer_string(&album_node, "/type")
+                    .or_else(|| json_pointer_string(&album_node, "/albumType"))
                     .unwrap_or("album")
                     .to_string(),
-                release_date: json_pointer_string(album_node, "/date/isoString")
+                release_date: json_pointer_string(&album_node, "/date/isoString")
                     .unwrap_or_default()
                     .to_string(),
-                total_tracks: json_pointer_u64(album_node, "/tracks/totalCount")
-                    .or_else(|| json_pointer_u64(album_node, "/trackCount"))
+                total_tracks: json_pointer_u64(&album_node, "/tracks/totalCount")
+                    .or_else(|| json_pointer_u64(&album_node, "/trackCount"))
                     .map(|v| v as usize)
                     .unwrap_or(0),
-                artists: artist_name.clone(),
+                artists: an,
                 images: max_image_url(
                     album_node
                         .pointer("/coverArt/sources")
                         .or_else(|| album_node.pointer("/coverArt/items/0/sources")),
                 ),
                 external_urls: format!("https://open.spotify.com/album/{}", album_id),
-            });
+            };
 
-            if let Ok(album_response) = fetch_album_compat(compat, &album_id).await {
-                track_list.extend(album_response.track_list);
-            }
+            let album_details = fetch_album_compat(&c, &album_id).await.ok();
+            (disc_album, album_details)
+        }
+    })
+    .buffer_unordered(5)
+    .collect::<Vec<_>>()
+    .await;
+
+    for (disc_album, album_details) in album_results {
+        album_list.push(disc_album);
+        if let Some(details) = album_details {
+            track_list.extend(details.track_list);
         }
     }
 
@@ -703,6 +822,67 @@ fn build_simple_artists_from_names(artists: &str) -> Vec<ArtistSimpleCompat> {
             external_urls: String::new(),
         })
         .collect()
+}
+
+fn track_artist_items(track_node: &Value) -> Vec<Value> {
+    let mut combined = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    let mut push_unique = |items: Option<&Vec<Value>>| {
+        if let Some(items) = items {
+            for item in items {
+                let key = extract_id(item)
+                    .or_else(|| {
+                        json_pointer_string(item, "/profile/name")
+                            .or_else(|| json_pointer_string(item, "/name"))
+                            .map(ToOwned::to_owned)
+                    })
+                    .unwrap_or_default();
+
+                if key.is_empty() || seen.insert(key) {
+                    combined.push(item.clone());
+                }
+            }
+        }
+    };
+
+    push_unique(track_node.pointer("/firstArtist/items").and_then(Value::as_array));
+    push_unique(
+        track_node
+            .pointer("/artists/items")
+            .or_else(|| track_node.get("artists"))
+            .and_then(Value::as_array),
+    );
+    push_unique(track_node.pointer("/otherArtists/items").and_then(Value::as_array));
+
+    combined
+}
+
+fn extract_album_copyright(album_node: Option<&Value>) -> Option<String> {
+    let items = album_node?
+        .pointer("/copyright/items")
+        .and_then(Value::as_array)?;
+
+    let standard = items.iter().find_map(|item| {
+        let text = json_pointer_string(item, "/text")?;
+        let kind = json_pointer_string(item, "/type");
+        if kind != Some("P") && !text.trim().is_empty() {
+            Some(text.to_string())
+        } else {
+            None
+        }
+    });
+
+    standard.or_else(|| {
+        items.iter().find_map(|item| {
+            let text = json_pointer_string(item, "/text")?;
+            if !text.trim().is_empty() {
+                Some(text.to_string())
+            } else {
+                None
+            }
+        })
+    })
 }
 
 fn join_artist_names(items: Option<&Vec<Value>>) -> String {

@@ -1,6 +1,6 @@
 import { ref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
-import { toast } from 'vue-sonner';
+import { toastWithSound as toast } from '../utils/toast-with-sound';
 import { useSettings } from './useSettings';
 import { buildPlaylistFolderName } from '../utils/playlist';
 
@@ -11,34 +11,85 @@ export function useDownload() {
     const currentDownloadInfo = ref<{ name: string; id: string; artists: string } | null>(null);
     const downloadedTracks = ref(new Set<string>());
     const failedTracks = ref(new Set<string>());
+    const skippedTracks = ref(new Set<string>());
+
+    const markDownloaded = (trackId: string) => {
+        downloadedTracks.value.add(trackId);
+        failedTracks.value.delete(trackId);
+        skippedTracks.value.delete(trackId);
+    };
+
+    const markSkipped = (trackId: string) => {
+        skippedTracks.value.add(trackId);
+        downloadedTracks.value.add(trackId);
+        failedTracks.value.delete(trackId);
+    };
+
+    const markFailed = (trackId: string) => {
+        failedTracks.value.add(trackId);
+        downloadedTracks.value.delete(trackId);
+        skippedTracks.value.delete(trackId);
+    };
 
     const downloadTrack = async (track: any): Promise<string | null> => {
         if (isDownloading.value) return null;
         
         const spotifyUrl = track.spotify_url || `https://open.spotify.com/track/${track.spotify_id || track.id}`;
+        const trackId = track.spotify_id || track.id;
+        const trackName = track.name || track.title || "Unknown Track";
+        const trackArtists = track.artists || "Unknown Artist";
         
         currentDownloadInfo.value = { 
-            name: track.name || track.title || "Unknown Track", 
-            id: track.spotify_id || track.id,
-            artists: track.artists || "Unknown Artist"
+            name: trackName, 
+            id: trackId,
+            artists: trackArtists
         };
         isDownloading.value = true;
         downloadProgress.value = 0;
 
         try {
+            const existence = await invoke<Array<{ spotify_id?: string; exists: boolean; file_path?: string | null }>>(
+                'check_files_existence',
+                {
+                    outputDir: settings.value.downloadPath,
+                    rootDir: settings.value.downloadPath,
+                    tracks: [
+                        {
+                            spotify_id: trackId,
+                            name: trackName,
+                            artists: trackArtists,
+                            album_name: track.album_name || track.album || undefined,
+                        },
+                    ],
+                },
+            );
+
+            if (Array.isArray(existence) && existence[0]?.exists) {
+                markSkipped(trackId);
+                toast.info('File already exists');
+                return existence[0].file_path || null;
+            }
+
             // Map Vue settings to Rust AppConfig
             const appConfig = {
                 output_dir: settings.value.downloadPath,
                 download_quality: settings.value.autoQuality === "24" ? "HiRes" : "Lossless",
                 filename_format: settings.value.filenameTemplate || "{track}. {title}",
                 embed_metadata: true,
-                embed_cover: settings.value.embedMaxQualityCover,
+                embed_cover: true,
                 embed_genre: settings.value.embedGenre,
                 use_single_genre: settings.value.useSingleGenre,
                 redownload_with_suffix: settings.value.redownloadWithSuffix,
                 download_artist_images: true,
                 embed_lyrics: settings.value.embedLyrics,
-                save_lrc_file: true
+                save_lrc_file: true,
+                // Missing fields required by Rust AppConfig:
+                downloader: settings.value.downloader,
+                auto_order: settings.value.autoOrder.split('-'),
+                allow_resolver_fallback: settings.value.allowResolverFallback,
+                folder_structure: settings.value.folderTemplate,
+                separator: settings.value.separator === "comma" ? "," : ";",
+                use_first_artist_only: settings.value.useFirstArtistOnly
             };
 
             const downloadedPath = await invoke<string>('download_track', { 
@@ -46,13 +97,13 @@ export function useDownload() {
                 config: appConfig 
             });
 
-            downloadedTracks.value.add(currentDownloadInfo.value.id);
-            toast.success(`Downloaded: ${currentDownloadInfo.value.name}`);
+            markDownloaded(trackId);
+            toast.success(`Downloaded: ${trackName}`);
             return downloadedPath;
         } catch (err: any) {
             console.error("Download failed:", err);
-            failedTracks.value.add(currentDownloadInfo.value!.id);
-            toast.error(`Failed to download ${track.name}: ${err}`);
+            markFailed(trackId);
+            toast.error(`Failed to download ${trackName}: ${err}`);
             return null;
         } finally {
             isDownloading.value = false;
@@ -91,7 +142,6 @@ export function useDownload() {
         
         for (const track of tracks) {
             const trackId = track.spotify_id || track.id;
-            if (downloadedTracks.value.has(trackId)) continue;
             
             const downloadedPath = await downloadTrack(track);
             if (downloadedPath) {
@@ -130,6 +180,7 @@ export function useDownload() {
         currentDownloadInfo,
         downloadedTracks,
         failedTracks,
+        skippedTracks,
         downloadTrack,
         downloadBatch,
         getFolderNameForMetadata,

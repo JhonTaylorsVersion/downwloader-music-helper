@@ -1,8 +1,8 @@
 use anyhow::{Result, anyhow};
-use crate::models::{TrackMetadata, AudioQuality};
+use crate::models::{AudioQuality, AppConfig};
 use crate::metadata::tagger::Tagger;
-use crate::utils::ffmpeg::{FFmpeg, FFprobe};
-use std::path::{Path, PathBuf};
+use crate::utils::ffmpeg::FFmpeg;
+use std::path::Path;
 use tokio::sync::Mutex;
 use std::sync::Arc;
 use tokio::task;
@@ -73,9 +73,31 @@ impl AudioProcessor {
                 match ffmpeg_res {
                     Ok(_) => {
                         // 3. Re-embed Metadata
-                        if let Some(mut m) = metadata {
+                        if let Some(m) = metadata {
                             let lyrics = m.lyrics_text.clone();
-                            if let Err(e) = Tagger::embed_metadata(&output_file, &m, lyrics.as_deref()) {
+                            // For manual conversion, we use a default config for tagging if not provided
+                            // In a real scenario, we might want to pass the user's preferred separator here
+                            let default_config = AppConfig {
+                                output_dir: String::new(),
+                                download_quality: AudioQuality::Lossless,
+                                filename_format: String::new(),
+                                embed_metadata: true,
+                                embed_cover: true,
+                                embed_genre: true,
+                                use_single_genre: true,
+                                redownload_with_suffix: false,
+                                download_artist_images: false,
+                                embed_lyrics: true,
+                                save_lrc_file: false,
+                                downloader: "auto".to_string(),
+                                auto_order: vec!["tidal".to_string()],
+                                allow_resolver_fallback: true,
+                                folder_structure: "flat".to_string(),
+                                separator: "; ".to_string(),
+                                use_first_artist_only: false,
+                            };
+
+                            if let Err(e) = Tagger::embed_metadata(&output_file, &m, lyrics.as_deref(), &default_config) {
                                 println!("⚠️ Warning: Failed to re-embed metadata to {}: {}", output_path_str, e);
                             }
                         }

@@ -1,5 +1,6 @@
+use crate::models::AppConfig;
 use regex::Regex;
-use std::path::Path;
+use std::path::PathBuf;
 
 pub struct FilenameBuilder;
 
@@ -21,7 +22,9 @@ impl FilenameBuilder {
         let safe_album_artist = Self::sanitize(album_artist.unwrap_or(artist_name));
         let safe_isrc = Self::sanitize(isrc.unwrap_or(""));
 
-        let year = release_date.and_then(|d| if d.len() >= 4 { Some(&d[..4]) } else { None }).unwrap_or("");
+        let year = release_date
+            .and_then(|d| if d.len() >= 4 { Some(&d[..4]) } else { None })
+            .unwrap_or("");
 
         let mut filename = if format.contains('{') {
             let mut res = format.to_string();
@@ -59,22 +62,76 @@ impl FilenameBuilder {
         // Final cleanup
         filename = filename.trim().to_string();
         if filename.is_empty() {
-             filename = "Unknown Track".to_string();
+            filename = "Unknown Track".to_string();
         }
 
         filename
     }
 
+    pub fn build_full_path(
+        config: &AppConfig,
+        track_name: &str,
+        artist_name: &str,
+        album_name: &str,
+        album_artist: Option<&str>,
+        release_date: Option<&str>,
+        isrc: Option<&str>,
+        track_number: u32,
+        disc_number: u32,
+        extension: &str,
+    ) -> PathBuf {
+        let mut final_artist = artist_name.to_string();
+        if config.use_first_artist_only {
+            // We split by standard separators like comma or semicolon
+            if let Some(first) = artist_name.split(|c| c == ',' || c == ';').next() {
+                final_artist = first.trim().to_string();
+            }
+        }
+
+        let filename = Self::build(
+            &config.filename_format,
+            track_name,
+            &final_artist,
+            album_name,
+            album_artist,
+            release_date,
+            isrc,
+            track_number,
+            disc_number,
+        );
+
+        let mut path = PathBuf::from(&config.output_dir);
+
+        match config.folder_structure.as_str() {
+            "artist" => {
+                path.push(Self::sanitize(&final_artist));
+            }
+            "artist_album" => {
+                path.push(Self::sanitize(&final_artist));
+                path.push(Self::sanitize(album_name));
+            }
+            _ => {} // flat
+        }
+
+        path.push(format!("{}.{}", filename, extension));
+        path
+    }
+
     pub fn sanitize(name: &str) -> String {
         let mut sanitized = name.replace("/", " ");
-        
+
         let re_illegal = Regex::new(r#"[<>:"\\|?*]"#).unwrap();
         sanitized = re_illegal.replace_all(&sanitized, " ").to_string();
 
         // Control characters
-        sanitized = sanitized.chars().filter(|c| !c.is_control() && *c != '\u{7f}').collect();
+        sanitized = sanitized
+            .chars()
+            .filter(|c| !c.is_control() && *c != '\u{7f}')
+            .collect();
 
-        sanitized = sanitized.trim_matches(|c: char| c == '.' || c == ' ' || c == '_').to_string();
+        sanitized = sanitized
+            .trim_matches(|c: char| c == '.' || c == ' ' || c == '_')
+            .to_string();
 
         let re_whitespace = Regex::new(r"\s+").unwrap();
         sanitized = re_whitespace.replace_all(&sanitized, " ").to_string();

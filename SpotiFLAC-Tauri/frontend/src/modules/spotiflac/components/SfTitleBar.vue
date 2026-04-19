@@ -15,6 +15,7 @@ import { Separator } from '@/components/ui/separator';
 
 const appWindow = getCurrentWindow();
 const isMaximized = ref(false);
+const hoveredWindowControl = ref<'tools' | 'minimize' | 'maximize' | 'close' | null>(null);
 
 const IP_INFO_REFRESH_INTERVAL_MS = 30000;
 const SPOTIFY_BLOCKED_COUNTRY_CODES = new Set([
@@ -91,11 +92,19 @@ const openExternal = async (url: string) => {
 const detectedCountryCode = computed(() => currentIPInfo.value?.country_code?.toUpperCase() || "");
 const detectedFlagPath = computed(() => detectedCountryCode.value ? `/assets/flags/${detectedCountryCode.value.toLowerCase()}.svg` : "");
 const isSpotifyBlockedCountry = computed(() => detectedCountryCode.value !== "" && SPOTIFY_BLOCKED_COUNTRY_CODES.has(detectedCountryCode.value));
+const closeButtonStyle = computed(() => ({
+  backgroundColor: hoveredWindowControl.value === 'close' ? '#e81123' : 'transparent',
+  color: hoveredWindowControl.value === 'close' ? '#ffffff' : 'hsl(var(--foreground))'
+}));
+const closeIconStyle = computed(() => ({
+  opacity: hoveredWindowControl.value === 'close' ? '1' : '0.6',
+  color: hoveredWindowControl.value === 'close' ? '#ffffff' : 'currentColor'
+}));
 </script>
 
 <template>
-  <div data-tauri-drag-region class="h-10 bg-background/50 backdrop-blur-xl border-b flex items-center justify-between px-4 select-none fixed top-0 w-full z-50 transition-all duration-300">
-    <div class="flex items-center gap-3 pointer-events-none">
+  <div data-tauri-drag-region class="sf-titlebar">
+    <div class="sf-titlebar__left pointer-events-none">
       <div class="flex items-center gap-2">
         <div class="h-2.5 w-2.5 rounded-full bg-primary animate-pulse shadow-[0_0_8px_rgba(var(--primary),0.5)]"></div>
         <span class="text-[10px] font-black uppercase tracking-[0.2em] opacity-40">SpotiFLAC Desktop</span>
@@ -114,10 +123,10 @@ const isSpotifyBlockedCountry = computed(() => detectedCountryCode.value !== "" 
       </div>
     </div>
 
-    <div class="flex items-center no-drag h-full">
+    <div class="sf-titlebar__controls no-drag">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button class="h-10 w-10 flex items-center justify-center hover:bg-muted/50 transition-all active:scale-90">
+          <button class="sf-titlebar__button sf-titlebar__button--tools">
             <SlidersHorizontal :class="['h-3.5 w-3.5 transition-colors', isSpotifyBlockedCountry ? 'text-destructive animate-pulse' : 'opacity-60']" />
           </button>
         </DropdownMenuTrigger>
@@ -168,18 +177,18 @@ const isSpotifyBlockedCountry = computed(() => detectedCountryCode.value !== "" 
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <Separator orientation="vertical" class="h-4 mx-1 opacity-10" />
+      <Separator orientation="vertical" class="h-4 mx-1 opacity-10 shrink-0" />
 
       <button 
         @click="minimize" 
-        class="h-10 w-10 flex items-center justify-center hover:bg-muted font-bold transition-all"
+        class="sf-titlebar__button"
         title="Minimizar"
       >
         <Minus class="h-3.5 w-3.5 opacity-60 hover:opacity-100" />
       </button>
       <button 
         @click="toggleMaximize" 
-        class="h-10 w-10 flex items-center justify-center hover:bg-muted font-bold transition-all"
+        class="sf-titlebar__button"
         :title="isMaximized ? 'Restaurar' : 'Maximizar'"
       >
         <Copy v-if="isMaximized" class="h-3 w-3 opacity-60 hover:opacity-100" />
@@ -187,10 +196,15 @@ const isSpotifyBlockedCountry = computed(() => detectedCountryCode.value !== "" 
       </button>
       <button 
         @click="close" 
-        class="h-10 w-12 flex items-center justify-center hover:bg-destructive hover:text-white transition-all group"
+        @mouseenter="hoveredWindowControl = 'close'"
+        @mouseleave="hoveredWindowControl = null"
+        @focus="hoveredWindowControl = 'close'"
+        @blur="hoveredWindowControl = null"
+        class="sf-titlebar__button sf-titlebar__button--close group"
+        :style="closeButtonStyle"
         title="Cerrar"
       >
-        <X class="h-4 w-4 opacity-60 group-hover:opacity-100" />
+        <X class="h-4 w-4 transition-opacity transition-colors duration-150" :style="closeIconStyle" />
       </button>
     </div>
   </div>
@@ -198,6 +212,99 @@ const isSpotifyBlockedCountry = computed(() => detectedCountryCode.value !== "" 
 
 <style scoped>
 .no-drag {
+  -webkit-app-region: no-drag;
   app-region: no-drag;
+}
+
+.sf-titlebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: auto;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-left: 16px;
+  padding-right: 0;
+  border-bottom: 1px solid hsl(var(--border));
+  background: color-mix(in oklab, hsl(var(--background)) 72%, transparent);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  z-index: 60;
+  user-select: none;
+  box-sizing: border-box;
+}
+
+.sf-titlebar__left {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  overflow: hidden;
+  padding-right: 12px;
+}
+
+.sf-titlebar__controls {
+  flex: 0 0 auto;
+  height: 40px;
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+}
+
+.sf-titlebar__button {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  flex: 0 0 auto;
+  width: 46px;
+  min-width: 46px;
+  max-width: 46px;
+  height: 40px;
+  min-height: 40px;
+  max-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background-color: transparent;
+  color: hsl(var(--foreground));
+  transition: background-color 160ms ease, color 160ms ease, opacity 160ms ease;
+  box-sizing: border-box;
+}
+
+.sf-titlebar__button:hover {
+  background-color: hsl(var(--muted));
+}
+
+.sf-titlebar__button--tools {
+  width: 48px;
+  min-width: 48px;
+  max-width: 48px;
+}
+
+.sf-titlebar__button--close {
+  width: 52px;
+  min-width: 52px;
+  max-width: 52px;
+}
+
+.sf-titlebar__button--close:hover,
+.sf-titlebar__button--close:focus-visible,
+.sf-titlebar__button--close:active {
+  background-color: #e81123 !important;
+  color: white !important;
+}
+
+.sf-titlebar__button--close:hover :deep(svg),
+.sf-titlebar__button--close:focus-visible :deep(svg),
+.sf-titlebar__button--close:active :deep(svg) {
+  color: white !important;
+  opacity: 1 !important;
 }
 </style>

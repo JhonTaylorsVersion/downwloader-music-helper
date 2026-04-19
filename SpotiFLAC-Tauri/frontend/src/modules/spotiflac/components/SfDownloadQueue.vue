@@ -1,223 +1,212 @@
 <template>
-  <!-- Mirrors DownloadQueue.tsx 1:1 -->
   <Teleport to="body">
     <Transition name="fade">
-      <div v-if="isOpen" class="sf-dialog-overlay" @click.self="$emit('close')">
-        <div class="sf-dialog" role="dialog" aria-modal="true">
+      <div
+        v-if="isOpen"
+        class="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4"
+        @click.self="$emit('close')"
+      >
+        <div class="max-w-[1200px] w-[95vw] max-h-[80vh] flex flex-col p-0 gap-0 bg-background border rounded-xl shadow-2xl overflow-hidden">
+          <div class="px-6 pt-6 pb-4 border-b space-y-0">
+            <div class="flex items-center justify-between mb-4">
+              <h2
+                class="text-lg font-semibold hover:text-primary transition-colors cursor-pointer"
+                title="Click to reset queue"
+                @click="handleReset"
+              >
+                Download Queue
+              </h2>
 
-          <!-- Header -->
-          <div class="sf-dialog-header">
-            <div class="sf-header-row">
-              <!-- Title — click resets entire queue (mirrors original onClick={handleReset}) -->
-              <h2 class="sf-title" @click="handleReset" title="Click to reset queue">Download Queue</h2>
-              <div class="sf-header-actions">
+              <div class="flex items-center gap-2">
                 <button
                   v-if="queueInfo.completed_count > 0 || queueInfo.failed_count > 0 || queueInfo.skipped_count > 0"
-                  class="sf-btn-ghost"
+                  class="inline-flex items-center gap-1.5 h-7 px-2.5 text-xs rounded-md hover:bg-muted transition-colors"
                   @click="handleClearHistory"
                 >
-                  <!-- Trash icon -->
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-                    <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
-                  </svg>
+                  <Trash2 class="h-3 w-3" />
                   Clear History
                 </button>
+
                 <button
                   v-if="queueInfo.failed_count > 0"
-                  class="sf-btn-ghost"
+                  class="inline-flex items-center gap-1.5 h-7 px-2.5 text-xs rounded-md hover:bg-muted transition-colors"
                   @click="handleExportFailed"
                 >
-                  <!-- FileDown icon -->
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                    <polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/>
-                    <polyline points="9 15 12 18 15 15"/>
-                  </svg>
+                  <FileDown class="h-3 w-3" />
                   Export Failures
                 </button>
-                <button class="sf-btn-icon" @click="$emit('close')">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                  </svg>
+
+                <button
+                  class="inline-flex items-center justify-center h-7 w-7 rounded-full hover:bg-muted transition-colors"
+                  @click="$emit('close')"
+                >
+                  <X class="h-4 w-4" />
                 </button>
               </div>
             </div>
 
-            <!-- Status filter chips — clicking toggles filter, mirrors original -->
-            <div class="sf-filter-row">
+            <div class="flex items-center gap-4 text-sm flex-wrap">
               <div
-                class="sf-filter-chip"
-                :class="{ 'sf-filter-chip--active': filterStatus === 'queued' }"
+                class="flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition-all select-none"
+                :class="filterStatus === 'queued' ? 'bg-secondary px-2 py-0.5 rounded-md ring-1 ring-border' : ''"
                 @click="toggleFilter('queued')"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                </svg>
-                <span class="text-muted">Queued:</span>
+                <Clock class="h-3.5 w-3.5 text-muted-foreground" />
+                <span class="text-muted-foreground">Queued:</span>
                 <span class="font-semibold">{{ queueInfo.queued_count }}</span>
               </div>
 
               <div
-                class="sf-filter-chip"
-                :class="{ 'sf-filter-chip--completed': filterStatus === 'completed' }"
+                class="flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition-all select-none"
+                :class="filterStatus === 'completed' ? 'bg-green-500/10 px-2 py-0.5 rounded-md ring-1 ring-green-500/20' : ''"
                 @click="toggleFilter('completed')"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                  <polyline points="22 4 12 14.01 9 11.01"/>
-                </svg>
-                <span class="text-muted">Completed:</span>
+                <CheckCircle2 class="h-3.5 w-3.5 text-green-500" />
+                <span class="text-muted-foreground">Completed:</span>
                 <span class="font-semibold">{{ queueInfo.completed_count }}</span>
               </div>
 
               <div
-                class="sf-filter-chip"
-                :class="{ 'sf-filter-chip--skipped': filterStatus === 'skipped' }"
+                class="flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition-all select-none"
+                :class="filterStatus === 'skipped' ? 'bg-yellow-500/10 px-2 py-0.5 rounded-md ring-1 ring-yellow-500/20' : ''"
                 @click="toggleFilter('skipped')"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-yellow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                  <polyline points="14 2 14 8 20 8"/>
-                  <polyline points="9 15 12 18 15 15"/><line x1="12" y1="12" x2="12" y2="18"/>
-                </svg>
-                <span class="text-muted">Skipped:</span>
+                <FileCheck class="h-3.5 w-3.5 text-yellow-500" />
+                <span class="text-muted-foreground">Skipped:</span>
                 <span class="font-semibold">{{ queueInfo.skipped_count }}</span>
               </div>
 
               <div
-                class="sf-filter-chip"
-                :class="{ 'sf-filter-chip--failed': filterStatus === 'failed' }"
+                class="flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition-all select-none"
+                :class="filterStatus === 'failed' ? 'bg-red-500/10 px-2 py-0.5 rounded-md ring-1 ring-red-500/20' : ''"
                 @click="toggleFilter('failed')"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-red" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"/>
-                  <line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
-                </svg>
-                <span class="text-muted">Failed:</span>
+                <XCircle class="h-3.5 w-3.5 text-red-500" />
+                <span class="text-muted-foreground">Failed:</span>
                 <span class="font-semibold">{{ queueInfo.failed_count }}</span>
               </div>
             </div>
 
-            <!-- Stats bar -->
-            <div class="sf-stats-row">
-              <div class="sf-stat">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="22" y1="12" x2="2" y2="12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>
-                  <line x1="6" y1="16" x2="6.01" y2="16"/><line x1="10" y1="16" x2="10.01" y2="16"/>
-                </svg>
-                <span class="text-muted">Downloaded:</span>
-                <span class="sf-mono">{{ queueInfo.total_downloaded > 0 ? `${queueInfo.total_downloaded.toFixed(2)} MB` : '0.00 MB' }}</span>
+            <div class="flex items-center gap-4 text-sm pt-3 mt-3 border-t flex-wrap">
+              <div class="flex items-center gap-1.5">
+                <HardDrive class="h-3.5 w-3.5 text-muted-foreground" />
+                <span class="text-muted-foreground">Downloaded:</span>
+                <span class="font-semibold font-mono tabular-nums">
+                  {{ queueInfo.total_downloaded > 0 ? `${queueInfo.total_downloaded.toFixed(2)} MB` : '0.00 MB' }}
+                </span>
               </div>
-              <div class="sf-stat">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-                </svg>
-                <span class="text-muted">Speed:</span>
-                <span class="sf-mono">{{ queueInfo.current_speed > 0 && queueInfo.is_downloading ? `${queueInfo.current_speed.toFixed(2)} MB/s` : '—' }}</span>
+
+              <div class="flex items-center gap-1.5">
+                <Zap class="h-3.5 w-3.5 text-muted-foreground" />
+                <span class="text-muted-foreground">Speed:</span>
+                <span class="font-semibold font-mono tabular-nums">
+                  {{ queueInfo.current_speed > 0 && queueInfo.is_downloading ? `${queueInfo.current_speed.toFixed(2)} MB/s` : '—' }}
+                </span>
               </div>
-              <div class="sf-stat">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                </svg>
-                <span class="text-muted">Duration:</span>
-                <span class="sf-mono">{{ queueInfo.session_start_time > 0 ? formatDuration(queueInfo.session_start_time) : '—' }}</span>
+
+              <div class="flex items-center gap-1.5">
+                <Timer class="h-3.5 w-3.5 text-muted-foreground" />
+                <span class="text-muted-foreground">Duration:</span>
+                <span class="font-semibold font-mono tabular-nums">
+                  {{ queueInfo.session_start_time > 0 ? formatDuration(queueInfo.session_start_time) : '—' }}
+                </span>
               </div>
             </div>
           </div>
 
-          <!-- Queue list -->
-          <div class="sf-dialog-body custom-scrollbar">
-            <div class="sf-queue-list">
-              <!-- Empty state -->
-              <div v-if="queueInfo.queue.length === 0" class="sf-empty">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                  <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-                </svg>
+          <div class="flex-1 overflow-y-auto px-6 custom-scrollbar">
+            <div class="space-y-2 py-4">
+              <div v-if="queueInfo.queue.length === 0" class="text-center py-12 text-muted-foreground">
+                <Download class="h-12 w-12 mx-auto mb-3 opacity-20" />
                 <p>No downloads in queue</p>
               </div>
 
-              <!-- Filtered empty state -->
-              <div v-else-if="filteredQueue.length === 0" class="sf-empty">
+              <div v-else-if="filteredQueue.length === 0" class="text-center py-12 text-muted-foreground">
                 <p>No downloads with status "{{ filterStatus }}"</p>
-                <button class="sf-btn-link" @click="filterStatus = 'all'">Clear filter</button>
+                <button class="text-primary text-sm mt-2" @click="filterStatus = 'all'">Clear filter</button>
               </div>
 
-              <!-- Queue items -->
               <div
-                v-else
                 v-for="item in filteredQueue"
+                v-else
                 :key="item.id"
-                class="sf-queue-item"
+                class="border rounded-lg p-3 hover:bg-muted/30 transition-colors"
               >
-                <div class="sf-item-icon">
-                  <!-- downloading -->
-                  <svg v-if="item.status === 'downloading'" class="icon-blue icon-bounce" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                    <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-                  </svg>
-                  <!-- completed -->
-                  <svg v-else-if="item.status === 'completed'" class="icon-green" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
-                  </svg>
-                  <!-- failed -->
-                  <svg v-else-if="item.status === 'failed'" class="icon-red" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
-                  </svg>
-                  <!-- skipped -->
-                  <svg v-else-if="item.status === 'skipped'" class="icon-yellow" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                    <polyline points="14 2 14 8 20 8"/><polyline points="9 15 12 18 15 15"/><line x1="12" y1="12" x2="12" y2="18"/>
-                  </svg>
-                  <!-- queued -->
-                  <svg v-else class="icon-muted" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                  </svg>
-                </div>
+                <div class="flex items-start gap-3">
+                  <div class="mt-1">
+                    <Download v-if="item.status === 'downloading'" class="h-4 w-4 text-blue-500 animate-bounce" />
+                    <CheckCircle2 v-else-if="item.status === 'completed'" class="h-4 w-4 text-green-500" />
+                    <XCircle v-else-if="item.status === 'failed'" class="h-4 w-4 text-red-500" />
+                    <FileCheck v-else-if="item.status === 'skipped'" class="h-4 w-4 text-yellow-500" />
+                    <Clock v-else class="h-4 w-4 text-muted-foreground" />
+                  </div>
 
-                <div class="sf-item-body">
-                  <div class="sf-item-top">
-                    <div class="sf-item-names">
-                      <p class="sf-track-name">{{ item.track_name }}</p>
-                      <p class="sf-artist-name">
-                        {{ item.artist_name }}
-                        <span v-if="item.album_name"> • {{ item.album_name }}</span>
-                      </p>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-start justify-between gap-2 mb-1">
+                      <div class="flex-1 min-w-0">
+                        <p class="font-medium truncate">{{ item.track_name }}</p>
+                        <p class="text-sm text-muted-foreground truncate">
+                          {{ item.artist_name }}<span v-if="item.album_name"> • {{ item.album_name }}</span>
+                        </p>
+                      </div>
+
+                      <div
+                        class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors"
+                        :class="getBadgeClasses(item.status)"
+                      >
+                        {{ item.status }}
+                      </div>
                     </div>
-                    <span class="sf-badge" :class="`sf-badge--${item.status}`">{{ item.status }}</span>
-                  </div>
 
-                  <!-- Downloading sub-line -->
-                  <div v-if="item.status === 'downloading'" class="sf-item-meta sf-mono">
-                    <span>{{ item.progress > 0 ? `${item.progress.toFixed(2)} MB` : queueInfo.is_downloading && queueInfo.current_speed > 0 ? 'Downloading...' : 'Starting...' }}</span>
-                    <span>{{ item.speed > 0 ? `${item.speed.toFixed(2)} MB/s` : queueInfo.current_speed > 0 ? `${queueInfo.current_speed.toFixed(2)} MB/s` : '—' }}</span>
-                  </div>
+                    <div
+                      v-if="item.status === 'downloading'"
+                      class="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground font-mono tabular-nums"
+                    >
+                      <span>
+                        {{ getItemProgress(item) > 0
+                          ? `${getItemProgress(item).toFixed(2)} MB`
+                          : queueInfo.is_downloading && queueInfo.current_speed > 0
+                            ? 'Downloading...'
+                            : 'Starting...' }}
+                      </span>
+                      <span>
+                        {{ getItemSpeed(item) > 0
+                          ? `${getItemSpeed(item).toFixed(2)} MB/s`
+                          : queueInfo.current_speed > 0
+                            ? `${queueInfo.current_speed.toFixed(2)} MB/s`
+                            : '—' }}
+                      </span>
+                    </div>
 
-                  <!-- Completed sub-line -->
-                  <div v-if="item.status === 'completed'" class="sf-item-meta sf-mono">
-                    <span>{{ item.progress.toFixed(2) }} MB</span>
-                  </div>
+                    <div
+                      v-if="item.status === 'completed'"
+                      class="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground"
+                    >
+                      <span class="font-mono tabular-nums">{{ getItemProgress(item).toFixed(2) }} MB</span>
+                    </div>
 
-                  <!-- Skipped sub-line -->
-                  <div v-if="item.status === 'skipped'" class="sf-item-meta">
-                    File already exists
-                  </div>
+                    <div v-if="item.status === 'skipped'" class="mt-1.5 text-xs text-muted-foreground">
+                      File already exists
+                    </div>
 
-                  <!-- Error message -->
-                  <div v-if="item.status === 'failed' && item.error_message" class="sf-error-msg">
-                    {{ item.error_message }}
-                  </div>
+                    <div
+                      v-if="item.status === 'failed' && item.error_message"
+                      class="mt-1.5 text-xs text-red-500 bg-red-50 dark:bg-red-950/20 rounded px-2 py-1"
+                    >
+                      {{ item.error_message }}
+                    </div>
 
-                  <!-- File path for completed/skipped -->
-                  <div v-if="(item.status === 'completed' || item.status === 'skipped') && item.file_path" class="sf-file-path sf-mono">
-                    {{ item.file_path }}
+                    <div
+                      v-if="(item.status === 'completed' || item.status === 'skipped') && item.file_path"
+                      class="mt-1.5 text-xs text-muted-foreground truncate font-mono"
+                    >
+                      {{ item.file_path }}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
-
         </div>
       </div>
     </Transition>
@@ -226,6 +215,19 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onUnmounted } from 'vue';
+import {
+  X,
+  Download,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  FileCheck,
+  Trash2,
+  HardDrive,
+  Zap,
+  Timer,
+  FileDown,
+} from 'lucide-vue-next';
 import { useDownloadStore } from '../stores/useDownloadStore';
 import { toastWithSound as toast } from '../utils/toast-with-sound';
 
@@ -242,19 +244,30 @@ const toggleFilter = (status: string) => {
 
 const filteredQueue = computed(() => {
   if (filterStatus.value === 'all') return queueInfo.value.queue;
-  return queueInfo.value.queue.filter(item => item.status === filterStatus.value);
+  return queueInfo.value.queue.filter((item) => item.status === filterStatus.value);
 });
+
+const getItemProgress = (item: any): number => item.progress ?? item.progress_mb ?? 0;
+const getItemSpeed = (item: any): number => item.speed ?? item.speed_mbps ?? 0;
+
+const getBadgeClasses = (status: string) => {
+  if (status === 'downloading') return 'border-transparent bg-primary text-primary-foreground';
+  if (status === 'failed') return 'border-red-500/30 bg-red-500/10 text-red-500';
+  if (status === 'skipped') return 'border-transparent bg-secondary text-secondary-foreground';
+  return 'text-foreground';
+};
 
 const formatDuration = (startTimestamp: number): string => {
   if (startTimestamp === 0) return '—';
   const now = Math.floor(Date.now() / 1000);
-  const secs = now - startTimestamp;
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  const s = secs % 60;
-  if (h > 0) return `${h}h ${m}m ${s}s`;
-  if (m > 0) return `${m}m ${s}s`;
-  return `${s}s`;
+  const durationSeconds = now - startTimestamp;
+  const hours = Math.floor(durationSeconds / 3600);
+  const minutes = Math.floor((durationSeconds % 3600) / 60);
+  const seconds = durationSeconds % 60;
+
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
 };
 
 const handleClearHistory = async () => {
@@ -283,21 +296,26 @@ const handleExportFailed = async () => {
       toast.info(message);
     }
   } catch (e) {
+    console.error('Failed to export:', e);
     toast.error(`Failed to export: ${e}`);
   }
 };
 
-// Poll 500ms when dialog is open — mirrors original useEffect with setInterval
 let pollInterval: ReturnType<typeof setInterval> | null = null;
 
-watch(() => props.isOpen, (open) => {
-  if (open) {
-    store.fetchQueue();
-    pollInterval = setInterval(() => store.fetchQueue(), 500);
-  } else {
-    if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
-  }
-}, { immediate: true });
+watch(
+  () => props.isOpen,
+  (open) => {
+    if (open) {
+      void store.fetchQueue();
+      pollInterval = setInterval(() => void store.fetchQueue(), 200);
+    } else if (pollInterval) {
+      clearInterval(pollInterval);
+      pollInterval = null;
+    }
+  },
+  { immediate: true },
+);
 
 onUnmounted(() => {
   if (pollInterval) clearInterval(pollInterval);
@@ -305,228 +323,26 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* Overlay */
-.sf-dialog-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  background: hsl(0 0% 0% / 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s;
 }
 
-/* Dialog container */
-.sf-dialog {
-  background: hsl(var(--background));
-  border: 1px solid hsl(var(--border));
-  border-radius: 0.75rem;
-  max-width: 1200px;
-  width: 95vw;
-  max-height: 80vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 
-/* Header */
-.sf-dialog-header {
-  padding: 1.5rem 1.5rem 1rem;
-  border-bottom: 1px solid hsl(var(--border));
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
 }
-.sf-header-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 1rem;
-}
-.sf-title {
-  font-size: 1.125rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: color 0.15s;
-}
-.sf-title:hover { color: hsl(var(--primary)); }
 
-.sf-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-.sf-btn-ghost {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.25rem 0.625rem;
-  font-size: 0.75rem;
-  border-radius: 6px;
-  border: none;
+.custom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
-  color: hsl(var(--foreground));
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.sf-btn-ghost:hover { background: hsl(var(--muted)); }
-.sf-btn-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.75rem;
-  height: 1.75rem;
-  border-radius: 9999px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  color: hsl(var(--foreground));
-  transition: background 0.15s;
-}
-.sf-btn-icon:hover { background: hsl(var(--muted)); }
-
-/* Filter chips */
-.sf-filter-row {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  font-size: 0.875rem;
-}
-.sf-filter-chip {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  cursor: pointer;
-  user-select: none;
-  border-radius: 6px;
-  padding: 2px 4px;
-  transition: all 0.15s;
-}
-.sf-filter-chip:hover { opacity: 0.8; }
-.sf-filter-chip--active { background: hsl(var(--muted)); padding: 2px 8px; box-shadow: 0 0 0 1px hsl(var(--border)); }
-.sf-filter-chip--completed { background: hsl(142 76% 36% / 0.1); padding: 2px 8px; box-shadow: 0 0 0 1px hsl(142 76% 36% / 0.2); }
-.sf-filter-chip--skipped { background: hsl(48 96% 53% / 0.1); padding: 2px 8px; box-shadow: 0 0 0 1px hsl(48 96% 53% / 0.2); }
-.sf-filter-chip--failed { background: hsl(0 72% 51% / 0.1); padding: 2px 8px; box-shadow: 0 0 0 1px hsl(0 72% 51% / 0.2); }
-
-/* Stats bar */
-.sf-stats-row {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  font-size: 0.875rem;
-  padding-top: 0.75rem;
-  margin-top: 0.75rem;
-  border-top: 1px solid hsl(var(--border));
-}
-.sf-stat {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
 }
 
-/* Body */
-.sf-dialog-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 1rem 1.5rem;
-}
-.sf-queue-list { display: flex; flex-direction: column; gap: 0.5rem; }
-
-/* Empty state */
-.sf-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 3rem 0;
-  color: hsl(var(--muted-foreground));
-  gap: 0.75rem;
-}
-.sf-btn-link { background: none; border: none; color: hsl(var(--primary)); cursor: pointer; font-size: 0.875rem; }
-
-/* Queue item */
-.sf-queue-item {
-  display: flex;
-  gap: 0.75rem;
-  border: 1px solid hsl(var(--border));
-  border-radius: 0.5rem;
-  padding: 0.75rem;
-  transition: background 0.15s;
-}
-.sf-queue-item:hover { background: hsl(var(--muted) / 0.3); }
-
-.sf-item-icon { margin-top: 2px; }
-.sf-item-icon svg { width: 1rem; height: 1rem; }
-
-.sf-item-body { flex: 1; min-width: 0; }
-.sf-item-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.25rem; }
-.sf-item-names { flex: 1; min-width: 0; }
-.sf-track-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sf-artist-name { font-size: 0.875rem; color: hsl(var(--muted-foreground)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-/* Badges */
-.sf-badge {
-  font-size: 0.7rem;
-  padding: 1px 6px;
-  border-radius: 9999px;
-  border: 1px solid hsl(var(--border));
-  white-space: nowrap;
-}
-.sf-badge--downloading { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: transparent; }
-.sf-badge--completed { border-color: hsl(var(--border)); }
-.sf-badge--failed { background: hsl(0 72% 51% / 0.15); color: hsl(0 72% 51%); border-color: hsl(0 72% 51% / 0.3); }
-.sf-badge--skipped { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); }
-.sf-badge--queued { border-color: hsl(var(--border)); }
-
-/* Sub-lines */
-.sf-item-meta {
-  display: flex;
-  gap: 0.75rem;
-  margin-top: 0.375rem;
-  font-size: 0.75rem;
-  color: hsl(var(--muted-foreground));
-}
-.sf-error-msg {
-  margin-top: 0.375rem;
-  font-size: 0.75rem;
-  color: hsl(0 72% 51%);
-  background: hsl(0 72% 51% / 0.08);
-  border-radius: 4px;
-  padding: 2px 6px;
-}
-.sf-file-path {
-  margin-top: 0.375rem;
-  font-size: 0.75rem;
-  color: hsl(var(--muted-foreground));
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Icons */
-.icon-blue   { color: hsl(220 90% 56%); }
-.icon-green  { color: hsl(142 76% 36%); }
-.icon-red    { color: hsl(0 72% 51%); }
-.icon-yellow { color: hsl(48 96% 53%); }
-.icon-muted  { color: hsl(var(--muted-foreground)); }
-.icon-bounce { animation: bounce 1s infinite; }
-
-/* Helpers */
-.text-muted   { color: hsl(var(--muted-foreground)); }
-.text-green   { color: hsl(142 76% 36%); }
-.text-yellow  { color: hsl(48 96% 53%); }
-.text-red     { color: hsl(0 72% 51%); }
-.font-semibold { font-weight: 600; }
-.sf-mono { font-family: monospace; font-variant-numeric: tabular-nums; }
-
-/* Scrollbar */
-.custom-scrollbar::-webkit-scrollbar { width: 6px; }
-.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-.custom-scrollbar::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 3px; }
-
-/* Fade transition */
-.fade-enter-active, .fade-leave-active { transition: opacity 0.2s; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
-
-@keyframes bounce {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-3px); }
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 3px;
 }
 </style>

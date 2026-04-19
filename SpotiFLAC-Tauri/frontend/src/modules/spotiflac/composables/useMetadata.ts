@@ -18,7 +18,35 @@ export function useMetadata() {
     external_urls: string;
   } | null>(null);
   const pendingArtistName = ref<string | null>(null);
+  const loadingToastId = ref<string | number | null>(null);
+  const fetchedCount = ref(0);
+  const currentName = ref("");
   let unlistenMetadataStream: null | (() => void) = null;
+
+  const dismissLoadingToast = () => {
+    if (loadingToastId.value != null) {
+      toast.dismiss(loadingToastId.value);
+      loadingToastId.value = null;
+    }
+  };
+
+  const updateLoadingToast = (message: string, description?: string) => {
+    const text = message.toLowerCase();
+
+    if (loadingToastId.value == null) {
+      loadingToastId.value = toast.info(text, {
+        duration: Infinity,
+        description,
+      });
+      return;
+    }
+
+    toast.info(text, {
+      id: loadingToastId.value,
+      duration: Infinity,
+      description,
+    });
+  };
 
   // Listen for metadata stream events from Rust
   void listen("metadata-stream", (event: any) => {
@@ -26,10 +54,34 @@ export function useMetadata() {
     if (!data) return;
 
     if (Array.isArray(data)) {
+      fetchedCount.value += data.length;
+
+      if (currentName.value) {
+        updateLoadingToast(
+          `fetching tracks for ${currentName.value.toLowerCase()}...`,
+          `${fetchedCount.value.toLocaleString()} tracks fetched`,
+        );
+      }
+
       if (metadata.value && "track_list" in metadata.value) {
         metadata.value.track_list = [...metadata.value.track_list, ...data];
       }
     } else {
+      const name =
+        data.artist_info?.name ||
+        data.album_info?.name ||
+        data.playlist_info?.name ||
+        data.playlist_info?.owner?.name ||
+        "";
+
+      if (name) {
+        currentName.value = name;
+        updateLoadingToast(
+          `fetching tracks for ${name.toLowerCase()}...`,
+          `${fetchedCount.value.toLocaleString()} tracks fetched`,
+        );
+      }
+
       metadata.value = data;
     }
   }).then((unlisten) => {
@@ -37,6 +89,7 @@ export function useMetadata() {
   });
 
   onUnmounted(() => {
+    dismissLoadingToast();
     if (unlistenMetadataStream) {
       unlistenMetadataStream();
       unlistenMetadataStream = null;
@@ -69,6 +122,12 @@ export function useMetadata() {
     metadata.value = null;
     showVpnAdviceDialog.value = false;
     fetchFailureReason.value = "";
+    fetchedCount.value = 0;
+    currentName.value = "";
+    updateLoadingToast(
+      "fetching metadata...",
+      "please wait while we retrieve the information",
+    );
 
     try {
       // First call initiates the fetch.
@@ -82,6 +141,7 @@ export function useMetadata() {
 
       if (data) {
         metadata.value = data;
+        dismissLoadingToast();
         toast.success("Metadata fetched successfully");
 
         // Add to history in Rust
@@ -89,7 +149,7 @@ export function useMetadata() {
           historyItem: {
             id: crypto.randomUUID(),
             url: urlToFetch,
-            type: urlType,
+            item_type: urlType,
             name:
               data.track?.name ||
               data.album_info?.name ||
@@ -117,9 +177,11 @@ export function useMetadata() {
     } catch (err: any) {
       console.error("Fetch failed:", err);
       fetchFailureReason.value = err.toString();
+      dismissLoadingToast();
       toast.error(err.toString());
       showVpnAdviceDialog.value = true;
     } finally {
+      dismissLoadingToast();
       loading.value = false;
     }
   };

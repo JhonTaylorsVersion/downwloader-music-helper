@@ -92,6 +92,12 @@ pub struct AppConfig {
     pub download_artist_images: bool,
     pub embed_lyrics: bool,
     pub save_lrc_file: bool,
+    pub downloader: String,
+    pub auto_order: Vec<String>,
+    pub allow_resolver_fallback: bool,
+    pub folder_structure: String,
+    pub separator: String,
+    pub use_first_artist_only: bool,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CurrentIPInfo {

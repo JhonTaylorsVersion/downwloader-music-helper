@@ -10,7 +10,7 @@ use crate::storage::{HistoryManager, HistoryItem, MirrorManager, ProviderPriorit
 use crate::utils::ffmpeg::FFmpeg;
 use crate::utils::filename::FilenameBuilder;
 use crate::progress::ProgressManager;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 pub struct SpotiFLACEngine {
@@ -175,7 +175,7 @@ impl SpotiFLACEngine {
         crate::utils::ffmpeg_downloader::FFmpegDownloader::ensure_binaries().await?;
 
         self.progress.log(&format!("- [Paso 2/6] Obteniendo metadatos de Spotify para: {} - {}", url, tidal_id_override.as_deref().unwrap_or("")));
-        let (mut metadata, _first_artist_id) = self.spotify.fetch_track_info_enriched(url).await?;
+        let (mut metadata, _first_artist_id, _plays) = self.spotify.fetch_track_info_enriched(url).await?;
         self.progress.log(&format!("  ✓ Metadatos obtenidos: {} - {}", metadata.artist, metadata.title));
         
         // Add to progress queue
@@ -200,17 +200,49 @@ impl SpotiFLACEngine {
 
         if let Some(h) = &self.history {
              if let Some(path) = h.is_already_downloaded(&metadata.id) {
-                 self.progress.log(&format!("ℹ️ Pista ya descargada anteriormente en: {} (Saltando...)", path));
-                 return Ok(std::path::PathBuf::from(path));
+                 if std::path::Path::new(&path).exists() {
+                     self.progress.log(&format!("ℹ️ Pista ya descargada anteriormente en: {} (Encontrada en disco)", path));
+                     self.progress.skip_item(&metadata.id, path.clone());
+                     return Ok(std::path::PathBuf::from(path));
+                 } else {
+                     self.progress.log(&format!("ℹ️ Historial indica descarga previa en {}, pero el archivo no existe. Procediendo a descargar...", path));
+                     // Optional: remove from history or just let it overwrite later
+                 }
              }
         }
 
         self.progress.log(&format!("DEBUG: ISRC Resolvido -> {}", isrc));
 
-        // 3. PRIORITIZE PROVIDERS (Tidal, Qobuz, Amazon)
+        // 3. PRIORITIZE PROVIDERS based on mode & order
         self.progress.log("- [Paso 4/6] Seleccionando proveedor...");
-        let providers_to_try = vec!["Tidal".to_string(), "Qobuz".to_string(), "Amazon".to_string()];
-        let prioritized = self.provider_priority.prioritize_providers("spotify", providers_to_try);
+        
+        let prioritized = if config.downloader != "auto" {
+            // Force specific provider
+            match config.downloader.as_str() {
+                "tidal" => vec!["Tidal".to_string()],
+                "qobuz" => vec!["Qobuz".to_string()],
+                "amazon" => vec!["Amazon".to_string()],
+                _ => vec!["Tidal".to_string()], // Fallback
+            }
+        } else {
+            // Use user-defined auto order
+            let mut base_list = Vec::new();
+            for p in &config.auto_order {
+                match p.as_str() {
+                    "tidal" => base_list.push("Tidal".to_string()),
+                    "qobuz" => base_list.push("Qobuz".to_string()),
+                    "amazon" => base_list.push("Amazon".to_string()),
+                    _ => {}
+                }
+            }
+            // Fallback if list is empty
+            if base_list.is_empty() {
+                base_list = vec!["Tidal".to_string(), "Qobuz".to_string(), "Amazon".to_string()];
+            }
+            
+            // Apply Smart Priority engine on top of user's base list
+            self.provider_priority.prioritize_providers("spotify", base_list)
+        };
 
         let mut last_error = anyhow!("Todos los proveedores fallaron");
 
@@ -280,8 +312,14 @@ impl SpotiFLACEngine {
             }
         }
         
-        let filename_base = FilenameBuilder::build(
-            &config.filename_format,
+        // --- PATH GENERATION ---
+        let final_ext = match config.download_quality {
+            AudioQuality::Low => "mp3",
+            _ => "flac",
+        };
+
+        let target_path = FilenameBuilder::build_full_path(
+            config,
             &final_metadata.title,
             &final_metadata.artist,
             &final_metadata.album,
@@ -290,33 +328,38 @@ impl SpotiFLACEngine {
             final_metadata.isrc.as_deref(),
             final_metadata.track_number,
             final_metadata.disc_number,
+            final_ext,
         );
-        self.progress.log(&format!("  ✓ Nombre de archivo: {}.flac", filename_base));
+        
+        // Final suffix logic (duplicates)
+        let final_path = FilenameBuilder::resolve_path(&target_path, config.redownload_with_suffix);
+        let final_dir = final_path.parent().unwrap_or(Path::new("."));
+
+        self.progress.log(&format!("  ✓ Destino: {}", final_path.to_string_lossy()));
 
         // --- DUPLICATE CHECK (Enhanced Scan) ---
-        let output_dir = PathBuf::from(&config.output_dir);
         if !config.redownload_with_suffix {
-            if let Some(existing_file) = crate::utils::scanner::AudioScanner::find_audio_file(&output_dir, &final_metadata.title, &final_metadata.artist) {
+            if let Some(existing_file) = crate::utils::scanner::AudioScanner::find_audio_file(&PathBuf::from(&config.output_dir), &final_metadata.title, &final_metadata.artist) {
                 self.progress.log(&format!("✓ El archivo ya existe (Fuzzy Match): {:?}", existing_file));
+                self.progress.skip_item(&metadata.id, existing_file.to_string_lossy().to_string());
                 return Ok(existing_file);
             }
         }
 
-        self.progress.start_item(file_id);
+        self.progress.start_item(&metadata.id);
 
         // --- DIRECTORY CREATION PARITY ---
-        // Ensure the output directory exists before any file operations (mirroring Go's logic)
-        if let Err(e) = tokio::fs::create_dir_all(&output_dir).await {
+        if let Err(e) = tokio::fs::create_dir_all(final_dir).await {
             self.progress.log(&format!("  ⚠️ Error creating output directory: {}", e));
-            return Err(anyhow!("Failed to create directory {:?}: {}", output_dir, e));
+            return Err(anyhow!("Failed to create directory {:?}: {}", final_dir, e));
         }
 
-        // PARITY FIX: Use Spotify ID for temp filename instead of file_id (which could be a URL with illegal chars)
+        // Use Spotify ID for temp filename to avoid illegal characters in URL-based file_id
         let temp_filename = format!("{}.tmp", metadata.id);
-        let temp_path = output_dir.join(&temp_filename);
+        let temp_path = final_dir.join(&temp_filename);
 
         self.progress.log("- [Paso 5/6] Iniciando descarga...");
-        provider.download_track(dl_info, temp_path.to_str().unwrap(), self.progress.clone(), file_id).await?;
+        provider.download_track(dl_info, temp_path.to_str().unwrap(), self.progress.clone(), &metadata.id).await?;
         self.progress.log("  ✓ Descarga finalizada.");
 
         let mut decryption_key = None;
@@ -329,15 +372,7 @@ impl SpotiFLACEngine {
 
         // --- CONVERSION ---
         self.progress.log("- [Paso 6/6] Realizando conversión y post-procesamiento...");
-        let final_ext = match config.download_quality {
-            AudioQuality::Low => "mp3",
-            _ => "flac",
-        };
-        let target_path = output_dir.join(format!("{}.{}", filename_base, final_ext));
-
-        let target_path = output_dir.join(format!("{}.{}", filename_base, final_ext));
-        let final_path = FilenameBuilder::resolve_path(&target_path, config.redownload_with_suffix);
-
+        
         if temp_path.extension().and_then(|s| s.to_str()) == Some(final_ext) && decryption_key.is_none() {
             self.progress.log("  ✓ Formato coincide, omitiendo conversión...");
             std::fs::rename(&temp_path, &final_path)?;
@@ -354,16 +389,16 @@ impl SpotiFLACEngine {
         self.progress.log("  🔍 Validando integridad del archivo...");
         if let Err(e) = crate::utils::validation::DownloadValidator::validate_duration(final_path.to_str().unwrap(), final_metadata.duration_ms) {
             let _ = std::fs::remove_file(&final_path);
-            let _ = std::fs::remove_file(temp_path);
+            let _ = std::fs::remove_file(&temp_path);
             return Err(anyhow!("Validation failed: {}", e));
         }
         self.progress.log("  ✓ Validación de duración exitosa.");
 
-        let _ = std::fs::remove_file(temp_path);
+        let _ = std::fs::remove_file(&temp_path);
 
         // --- ARTIST ASSETS ---
         if config.download_artist_images {
-            let _ = self.assets.download_artist_assets(&output_dir, &final_metadata.artist, final_metadata.artist_avatar_url.as_deref(), final_metadata.artist_header_url.as_deref(), final_metadata.artist_gallery_urls.as_deref()).await;
+            let _ = self.assets.download_artist_assets(final_dir, &final_metadata.artist, final_metadata.artist_avatar_url.as_deref(), final_metadata.artist_header_url.as_deref(), final_metadata.artist_gallery_urls.as_deref()).await;
         }
 
         // --- LYRICS ---
@@ -381,7 +416,7 @@ impl SpotiFLACEngine {
         }
 
         self.progress.log("  🏷️ Incrustando metadatos y letras...");
-        Tagger::embed_metadata(&final_path, &final_metadata, lyrics_content.as_deref())?;
+        Tagger::embed_metadata(&final_path, &final_metadata, lyrics_content.as_deref(), config)?;
         
         if config.embed_cover {
              if let Some(cover_url) = &final_metadata.cover_url {
@@ -414,7 +449,7 @@ impl SpotiFLACEngine {
         }
 
         if let Ok(meta) = std::fs::metadata(&final_path) {
-            self.progress.complete_item(file_id, final_path.to_string_lossy().to_string(), meta.len() as f64 / (1024.0 * 1024.0));
+            self.progress.complete_item(&metadata.id, final_path.to_string_lossy().to_string(), meta.len() as f64 / (1024.0 * 1024.0));
         }
 
         self.progress.log(&format!("✅ ÉXITO: Archivo listo en {:?}", final_path));

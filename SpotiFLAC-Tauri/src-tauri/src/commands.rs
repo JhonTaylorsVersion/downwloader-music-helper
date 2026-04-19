@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use spotiflac_core_rs::engine::SpotiFLACEngine;
 use spotiflac_core_rs::models::AppConfig;
 use spotiflac_core_rs::progress::{
-    DownloadQueueInfo, DownloadStatus, ProgressHandler, ProgressUpdate,
+    DownloadQueueInfo, DownloadStatus, ProgressHandler, ProgressInfo, ProgressUpdate,
 };
 use spotiflac_core_rs::storage::history::FetchHistoryItem;
 use std::path::{Path, PathBuf};
@@ -194,8 +194,17 @@ pub async fn check_track_availability(
 }
 
 #[tauri::command]
-pub async fn check_api_status(_api_type: String, _api_url: String) -> Result<bool, String> {
-    Ok(true)
+pub async fn check_api_status(_api_type: String, api_url: String) -> Result<bool, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    match client.get(&api_url).send().await {
+        Ok(resp) => Ok(resp.status().is_success()),
+        Err(_) => Ok(false),
+    }
 }
 
 /// Fetches real unified API status from the SpotiFLAC status endpoint (with 5s cache + 3 retries)
@@ -858,6 +867,12 @@ pub async fn download_avatar(
 #[tauri::command]
 pub async fn get_download_queue(state: State<'_, AppState>) -> Result<DownloadQueueInfo, String> {
     Ok(state.engine.progress.get_queue_info())
+}
+
+/// Returns current progress info — mirrors Go's GetDownloadProgress exactly
+#[tauri::command]
+pub async fn get_download_progress(state: State<'_, AppState>) -> Result<ProgressInfo, String> {
+    Ok(state.engine.progress.get_progress_info())
 }
 
 /// Removes completed/failed/skipped items — mirrors Go's ClearDownloadQueue

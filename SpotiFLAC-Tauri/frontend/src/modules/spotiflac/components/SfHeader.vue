@@ -57,7 +57,7 @@ const reloadApp = () => {
         </div>
       </div>
       <p class="text-muted-foreground">
-        Get Spotify tracks in true FLAC from Tidal, Qobuz & Amazon Music — no account required.
+        Get tracks in true FLAC from Providers.
       </p>
     </div>
   </div>

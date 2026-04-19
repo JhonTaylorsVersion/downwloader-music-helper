@@ -10,9 +10,14 @@ import {
 import { useMetadata } from '../composables/useMetadata';
 import { useDownload } from '../composables/useDownload';
 import { useHistory } from '../composables/useHistory';
+import { useLyrics } from '../composables/useLyrics';
+import { useCover } from '../composables/useCover';
+import { useAvailability } from '../composables/useAvailability';
+import { useSettings } from '../composables/useSettings';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { ChevronLeft } from 'lucide-vue-next';
+import { invoke } from '@tauri-apps/api/core';
 import {
   Dialog,
   DialogContent,
@@ -43,12 +48,66 @@ const {
   downloadProgress,
   currentDownloadInfo,
   downloadedTracks,
+  failedTracks,
+  skippedTracks,
   downloadTrack,
   downloadBatch,
   getFolderNameForMetadata,
 } = useDownload();
 
 const { fetchHistory, deleteFetchHistoryItem } = useHistory();
+
+const {
+  downloadingLyricsTrack,
+  downloadedLyrics,
+  failedLyrics,
+  skippedLyrics,
+  isBulkDownloadingLyrics,
+  handleDownloadLyrics: apiDownloadLyrics,
+  handleDownloadAllLyrics: apiDownloadAllLyrics,
+} = useLyrics();
+
+const {
+  downloadingCover,
+  downloadingCoverTrack,
+  downloadedCovers,
+  failedCovers,
+  skippedCovers,
+  isBulkDownloadingCovers,
+  handleDownloadCover: apiDownloadCover,
+  handleDownloadAllCovers: apiDownloadAllCovers,
+} = useCover();
+
+const {
+  checking: checkingAvailability,
+  checkingTrackId,
+  availabilityMap,
+  checkAvailability: apiCheckAvailability,
+} = useAvailability();
+
+const { settings } = useSettings();
+
+const handleDownloadLyricsWrapper = (spotifyId: string, name: string, artists: string, albumName?: string, playlistName?: string, isArtistDiscography?: boolean, position?: number, albumArtist?: string, releaseDate?: string, discNumber?: number) => {
+  // Map arguments correctly to useLyrics handleDownloadLyrics
+  void apiDownloadLyrics(
+    spotifyId, name, artists, albumName, 
+    playlistName, position, albumArtist, releaseDate, discNumber, isArtistDiscography
+  );
+};
+
+const handleDownloadCoverWrapper = (coverUrl: string, trackName: string, artistName: string, albumName?: string, playlistName?: string, isArtistDiscography?: boolean, position?: number, trackId?: string, albumArtist?: string, releaseDate?: string, discNumber?: number) => {
+  // Map arguments correctly to useCover handleDownloadCover
+  void apiDownloadCover(
+    coverUrl, trackName, artistName, albumName, 
+    playlistName, position, trackId, albumArtist, releaseDate, discNumber, isArtistDiscography
+  );
+};
+
+const handleOpenFolder = () => {
+  if (settings.value?.downloadPath) {
+    void invoke('open_folder', { path: settings.value.downloadPath });
+  }
+};
 
 const url = ref('');
 const searchMode = ref(false);
@@ -171,10 +230,33 @@ const hasMetadataResult = computed(() => currentView.value !== 'history');
           v-if="currentView === 'track'"
           :track="metadata.track"
           :is-downloading="isDownloading"
+          :downloading-track="currentDownloadInfo?.id"
           :is-downloaded="downloadedTracks.has(metadata.track.spotify_id)"
+          :is-failed="failedTracks.has(metadata.track.spotify_id)"
+          :is-skipped="skippedTracks.has(metadata.track.spotify_id)"
+          
+          :downloading-lyrics-track="downloadingLyricsTrack"
+          :downloaded-lyrics="downloadedLyrics.has(metadata.track.spotify_id)"
+          :failed-lyrics="failedLyrics.has(metadata.track.spotify_id)"
+          :skipped-lyrics="skippedLyrics.has(metadata.track.spotify_id)"
+          
+          :checking-availability="checkingAvailability"
+          :checking-track-id="checkingTrackId"
+          :availability="availabilityMap.get(metadata.track.spotify_id)"
+          
+          :downloading-cover="downloadingCover"
+          :downloaded-cover="downloadedCovers.has(metadata.track.spotify_id)"
+          :failed-cover="failedCovers.has(metadata.track.spotify_id)"
+          :skipped-cover="skippedCovers?.has(metadata.track.spotify_id)"
+          
           @download="handleDownloadSingleTrack"
+          @download-lyrics="handleDownloadLyricsWrapper"
+          @check-availability="apiCheckAvailability"
+          @download-cover="handleDownloadCoverWrapper"
+          @open-folder="handleOpenFolder"
           @album-click="handleAlbumClick"
           @artist-click="artist => void handleArtistClick(artist)"
+          @back="handleBack"
         />
 
         <SfAlbumView
@@ -187,8 +269,31 @@ const hasMetadataResult = computed(() => currentView.value !== 'history');
           :current-download-info="currentDownloadInfo"
           :selected-tracks="selectedTracks"
           :downloaded-tracks="downloadedTracks"
+          
+          :downloaded-lyrics="downloadedLyrics"
+          :failed-lyrics="failedLyrics"
+          :skipped-lyrics="skippedLyrics"
+          :downloading-lyrics-track="downloadingLyricsTrack"
+          :is-bulk-downloading-lyrics="isBulkDownloadingLyrics"
+          
+          :downloaded-covers="downloadedCovers"
+          :failed-covers="failedCovers"
+          :skipped-covers="skippedCovers"
+          :downloading-cover-track="downloadingCoverTrack"
+          :is-bulk-downloading-covers="isBulkDownloadingCovers"
+          
+          :availability-map="availabilityMap"
+          :checking-availability="checkingAvailability"
+          :checking-track-id="checkingTrackId"
+          
           @download-all="handleDownloadAll"
           @download-selected="handleDownloadBatch"
+          @download-all-lyrics="() => apiDownloadAllLyrics(metadata.track_list, metadata.album_info.name, false, true)"
+          @download-all-covers="() => apiDownloadAllCovers(metadata.track_list, metadata.album_info.name, true)"
+          @download-lyrics="apiDownloadLyrics"
+          @download-cover="apiDownloadCover"
+          @open-folder="handleOpenFolder"
+          
           @toggle-track="toggleTrack"
           @toggle-select-all="toggleSelectAll"
           @artist-click="(artist: { id: string; name: string; external_urls: string }) => void handleArtistClick(artist)"
@@ -205,8 +310,33 @@ const hasMetadataResult = computed(() => currentView.value !== 'history');
           :current-download-info="currentDownloadInfo"
           :downloaded-tracks="downloadedTracks"
           :selected-tracks="selectedTracks"
+          
+          :downloaded-lyrics="downloadedLyrics"
+          :failed-lyrics="failedLyrics"
+          :skipped-lyrics="skippedLyrics"
+          :downloading-lyrics-track="downloadingLyricsTrack"
+          :is-bulk-downloading-lyrics="isBulkDownloadingLyrics"
+          
+          :downloaded-covers="downloadedCovers"
+          :failed-covers="failedCovers"
+          :skipped-covers="skippedCovers"
+          :downloading-cover-track="downloadingCoverTrack"
+          :is-bulk-downloading-covers="isBulkDownloadingCovers"
+          
+          :availability-map="availabilityMap"
+          :checking-availability="checkingAvailability"
+          :checking-track-id="checkingTrackId"
+          
           @download-all="handleDownloadAll"
           @download-selected="handleDownloadBatch"
+          @download-all-lyrics="() => apiDownloadAllLyrics(metadata.track_list, metadata.playlist_info.name, false, false)"
+          @download-all-covers="() => apiDownloadAllCovers(metadata.track_list, metadata.playlist_info.name, false)"
+          @download-track="handleDownloadSingleTrack"
+          @download-lyrics="handleDownloadLyricsWrapper"
+          @download-cover="handleDownloadCoverWrapper"
+          @check-availability="apiCheckAvailability"
+          @open-folder="handleOpenFolder"
+          
           @toggle-track="toggleTrack"
           @toggle-select-all="toggleSelectAll"
           @artist-click="(artist: { id: string; name: string; external_urls: string }) => void handleArtistClick(artist)"
@@ -223,7 +353,32 @@ const hasMetadataResult = computed(() => currentView.value !== 'history');
           :current-download-info="currentDownloadInfo"
           :selected-tracks="selectedTracks"
           :downloaded-tracks="downloadedTracks"
+          
+          :downloaded-lyrics="downloadedLyrics"
+          :failed-lyrics="failedLyrics"
+          :skipped-lyrics="skippedLyrics"
+          :downloading-lyrics-track="downloadingLyricsTrack"
+          :is-bulk-downloading-lyrics="isBulkDownloadingLyrics"
+          
+          :downloaded-covers="downloadedCovers"
+          :failed-covers="failedCovers"
+          :skipped-covers="skippedCovers"
+          :downloading-cover-track="downloadingCoverTrack"
+          :is-bulk-downloading-covers="isBulkDownloadingCovers"
+          
+          :availability-map="availabilityMap"
+          :checking-availability="checkingAvailability"
+          :checking-track-id="checkingTrackId"
+          
           @download-all="handleDownloadAll"
+          @download-all-lyrics="() => apiDownloadAllLyrics(metadata.track_list, metadata.artist_info.name, true, false)"
+          @download-all-covers="() => apiDownloadAllCovers(metadata.track_list, metadata.artist_info.name, false)"
+          @download-track="handleDownloadSingleTrack"
+          @download-lyrics="handleDownloadLyricsWrapper"
+          @download-cover="handleDownloadCoverWrapper"
+          @check-availability="apiCheckAvailability"
+          @open-folder="handleOpenFolder"
+          
           @toggle-track="toggleTrack"
           @toggle-select-all="toggleSelectAll"
           @album-click="handleAlbumClick"

@@ -18,7 +18,9 @@
         "minWidth": 1024,
         "minHeight": 600,
         "decorations": false,
+        "shadow": true,
         "transparent": true,
+        "visible": false,
         "resizable": true,
         "fullscreen": false
       }

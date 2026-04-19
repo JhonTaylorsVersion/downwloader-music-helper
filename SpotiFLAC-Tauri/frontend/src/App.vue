@@ -16,11 +16,10 @@ import { useSettings } from './modules/spotiflac/composables/useSettings';
 import { useApiStatus } from './modules/spotiflac/composables/useApiStatus';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { 
-  Dialog, DialogContent, DialogDescription, 
-  DialogFooter, DialogHeader, DialogTitle 
-} from '@/components/ui/dialog';
-import { toast } from 'vue-sonner';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { toastWithSound as toast } from './modules/spotiflac/utils/toast-with-sound';
+
+import { getCurrentWindow } from '@tauri-apps/api/window';
 
 const APP_VERSION = ref("2.2.0"); 
 const osPlatform = ref("windows"); 
@@ -45,10 +44,19 @@ const hasUpdate = ref(false);
 const releaseDate = ref<string | null>(null);
 
 onMounted(async () => {
-  // 1. Initial State
+  // 1. Initial State (Theme & Local settings)
   await loadSettings();
   
-  // 2. Startup Orchestration
+  // 4. Show window IMMEDIATELY after settings are loaded (Eliminates transparent flicker)
+  // We do this before network calls to ensure the window doesn't hang hidden.
+  try {
+    const appWindow = getCurrentWindow();
+    await appWindow.show();
+  } catch (err) {
+    console.error("Failed to show window:", err);
+  }
+
+  // 2. Startup Orchestration (Background checks)
   checkFFmpeg();
   
   // Get App Version
@@ -59,7 +67,7 @@ onMounted(async () => {
     APP_VERSION.value = "2.2.0";
   }
 
-  checkForUpdates();
+  checkForUpdates(); // This is a network call, we don't await it to avoid blocking.
   ensureApiStatusCheckStarted();
 
   // Get platform
@@ -90,6 +98,15 @@ onMounted(async () => {
   (window as any)._spotiflac_cleanups = cleanups;
   
   window.addEventListener('scroll', handleScroll, { passive: true });
+
+  // Warm up audio engine on first interaction
+  const warmUpAudio = () => {
+    toast.warmUp();
+    window.removeEventListener('click', warmUpAudio);
+    window.removeEventListener('keydown', warmUpAudio);
+  };
+  window.addEventListener('click', warmUpAudio, { once: true });
+  window.addEventListener('keydown', warmUpAudio, { once: true });
 });
 
 onUnmounted(() => {
@@ -232,7 +249,7 @@ const handleHistorySelect = (cachedData: string) => {
       </div>
 
       <SfDownloadQueue :is-open="showDownloadQueue" @close="showDownloadQueue = false" />
-      <SfDownloadProgressToast />
+      <SfDownloadProgressToast @click="showDownloadQueue = true" />
 
       <Button
         v-if="showScrollTop"
@@ -317,10 +334,12 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background: transparent;
+  overflow-x: hidden;
 }
 
 #app {
-  width: 100vw;
+  width: 100%;
   min-height: 100vh;
+  overflow-x: hidden;
 }
 </style>

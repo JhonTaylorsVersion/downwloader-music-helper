@@ -104,11 +104,15 @@
         :on-download-cover="onDownloadAllCovers"
         :on-artist-click="onArtistClick"
         :on-track-click="onTrackClick"
+        :availability-map="availabilityMap"
+        :checking-availability="checkingAvailability"
+        :checking-track-id="checkingTrackId"
         @toggle-track="$emit('toggleTrack', $event)"
         @toggle-select-all="$emit('toggleSelectAll', $event)"
         @download-track="(...args) => $emit('downloadTrack', ...args)"
         @download-lyrics="(...args) => $emit('downloadLyrics', ...args)"
         @download-cover="(...args) => $emit('downloadCover', ...args)"
+        @check-availability="(...args: any) => $emit('checkAvailability', ...args)"
         @page-change="$emit('pageChange', $event)"
         @artist-click="$emit('artistClick', $event)"
         @track-click="$emit('trackClick', $event)"
@@ -172,6 +176,9 @@ const props = withDefaults(defineProps<{
   onArtistClick?: (artist: { id: string; name: string; external_urls: string }) => void;
   onTrackClick?: (track: TrackMetadata) => void;
   showBack?: boolean;
+  availabilityMap?: Map<string, any>;
+  checkingAvailability?: boolean;
+  checkingTrackId?: string | null;
 }>(), {
   searchQuery: '',
   sortBy: 'title-asc',
@@ -195,6 +202,7 @@ const props = withDefaults(defineProps<{
 
 defineEmits([
   'searchChange','sortChange','toggleTrack','toggleSelectAll','downloadTrack','downloadLyrics','downloadCover',
+  'checkAvailability',
   'downloadAll','downloadSelected','downloadAllLyrics','downloadAllCovers','stopDownload','openFolder',
   'pageChange','artistClick','albumClick','trackClick','back',
 ]);

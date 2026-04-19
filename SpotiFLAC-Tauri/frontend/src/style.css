@@ -72,6 +72,37 @@
   --ring: oklch(0.556 0 0);
 }
 
+/* Accent Themes */
+[data-theme='yellow'] {
+  --primary: oklch(0.85 0.22 95); /* Bright Yellow/Gold */
+  --primary-foreground: oklch(0.2 0.05 95);
+  --ring: oklch(0.85 0.22 95);
+}
+
+[data-theme='emerald'] {
+  --primary: oklch(0.7 0.2 160); /* Emerald Green */
+  --primary-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.7 0.2 160);
+}
+
+[data-theme='blue'] {
+  --primary: oklch(0.65 0.2 250); /* Royal Blue */
+  --primary-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.65 0.2 250);
+}
+
+[data-theme='rose'] {
+  --primary: oklch(0.65 0.2 0); /* Vibrant Rose/Pink */
+  --primary-foreground: oklch(0.985 0 0);
+  --ring: oklch(0.65 0.2 0);
+}
+
+/* Dark Mode Theme Overrides (Optional refinement) */
+.dark[data-theme='yellow'] { --primary: oklch(0.85 0.22 95); }
+.dark[data-theme='emerald'] { --primary: oklch(0.7 0.2 160); }
+.dark[data-theme='blue'] { --primary: oklch(0.65 0.2 250); }
+.dark[data-theme='rose'] { --primary: oklch(0.65 0.2 0); }
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

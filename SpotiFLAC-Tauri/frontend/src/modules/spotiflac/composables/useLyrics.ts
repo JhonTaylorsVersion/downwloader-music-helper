@@ -21,7 +21,7 @@ async function resolveTemplateISRC(settings: {
         return "";
     }
     try {
-        return await invoke("get_track_isrc", { spotifyId });
+        return await invoke("get_track_isrc", { spotify_id: spotifyId });
     }
     catch {
         return "";

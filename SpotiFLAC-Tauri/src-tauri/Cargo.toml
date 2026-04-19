@@ -32,3 +32,5 @@ base64 = "0.22"
 dirs = "5"
 chrono = "0.4"
 reqwest = { version = "0.12", features = ["json", "stream"] }
+futures = "0.3"
+windows = { version = "0.61.3", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_Graphics_Gdi"] }

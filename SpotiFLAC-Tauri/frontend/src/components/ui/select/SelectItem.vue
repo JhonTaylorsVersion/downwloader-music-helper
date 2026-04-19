@@ -18,7 +18,7 @@ const handleSelect = () => {
   <div 
     @click="handleSelect"
     :class="[
-      'relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-2 pr-8 text-sm outline-none hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      'relative flex w-full cursor-default select-none items-center gap-1 rounded-sm py-1.5 pl-2 pr-8 text-sm whitespace-nowrap outline-none hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       isSelected ? 'bg-accent text-accent-foreground font-medium' : '',
       $attrs.class
     ]"

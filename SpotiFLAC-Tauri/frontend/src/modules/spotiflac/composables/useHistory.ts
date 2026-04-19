@@ -1,6 +1,6 @@
 import { ref, onMounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
-import { toast } from 'vue-sonner';
+import { toastWithSound as toast } from '../utils/toast-with-sound';
 
 export function useHistory() {
     const fetchHistory = ref<any[]>([]);

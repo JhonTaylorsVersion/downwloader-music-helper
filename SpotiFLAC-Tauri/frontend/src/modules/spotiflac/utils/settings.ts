@@ -350,24 +350,36 @@ export async function resetToDefaultSettings(): Promise<Settings> {
 }
 
 export function applyThemeMode(mode: "auto" | "light" | "dark"): void {
+  console.log(`[ThemeEngine] Aplicando Modo: ${mode}`);
   if (mode === "auto") {
     const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
     document.documentElement.classList.toggle("dark", prefersDark);
+    console.log(`[ThemeEngine] Auto-detectado modo oscuro: ${prefersDark}`);
   } else {
     document.documentElement.classList.toggle("dark", mode === "dark");
   }
 }
 
 export function applyFont(fontFamily: FontFamily): void {
+  console.log(`[ThemeEngine] Aplicando Fuente: ${fontFamily}`);
   const font = FONT_OPTIONS.find((entry) => entry.value === fontFamily);
   if (font) {
     document.documentElement.style.setProperty("--font-sans", font.fontFamily);
     document.body.style.fontFamily = font.fontFamily;
+  } else {
+    console.warn(`[ThemeEngine] Fuente no encontrada: ${fontFamily}`);
   }
 }
 
 export function applyTheme(theme: string): void {
+  console.log(`[ThemeEngine] Aplicando Acento: ${theme}`);
   document.documentElement.setAttribute("data-theme", theme);
+  const currentAttr = document.documentElement.getAttribute("data-theme");
+  if (currentAttr !== theme) {
+    console.error(`[ThemeEngine] Error: Falló la aplicación del atributo data-theme [${theme}]`);
+  } else {
+    console.log(`[ThemeEngine] ✓ Atributo data-theme establecido correctamente a: ${theme}`);
+  }
 }
 
 export { parseTemplate, type TemplateData };

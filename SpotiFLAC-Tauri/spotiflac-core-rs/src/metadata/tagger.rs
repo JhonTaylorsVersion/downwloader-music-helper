@@ -1,5 +1,5 @@
 use anyhow::{Result, anyhow};
-use crate::models::TrackMetadata;
+use crate::models::{TrackMetadata, AppConfig};
 use crate::utils::metadata_formatter::MetadataFormatter;
 use crate::utils::upc::PREFERRED_UPC_TAG_KEY;
 use lofty::prelude::*;
@@ -13,7 +13,7 @@ pub struct Tagger;
 
 impl Tagger {
     /// Embeds all available metadata into the audio file.
-    pub fn embed_metadata(path: &Path, metadata: &TrackMetadata, lyrics: Option<&str>) -> Result<()> {
+    pub fn embed_metadata(path: &Path, metadata: &TrackMetadata, lyrics: Option<&str>, config: &AppConfig) -> Result<()> {
         let mut tagged_file = lofty::read_from_path(path)?;
         
         let tag_type = tagged_file.primary_tag_type();
@@ -26,23 +26,34 @@ impl Tagger {
             }
         };
 
-        // 1. Basic Text Tags
+        // 1. Artist formatting based on settings
+        let mut final_artist = metadata.artist.clone();
+        if config.use_first_artist_only {
+            if let Some(first) = metadata.artist.split(|c| c == ',' || c == ';').next() {
+                final_artist = first.trim().to_string();
+            }
+        }
+        
+        let display_artist = final_artist.replace(", ", &config.separator).replace("; ", &config.separator);
+
+        // 2. Basic Text Tags
         tag.set_title(metadata.title.clone());
         tag.set_album(metadata.album.clone());
         
-        // 2. Multi-Value Tags (Artists, Composer, Genre)
-        // Usamos punto y coma para máxima compatibilidad con reproductores como MusicBee/Foobar
-        Self::insert_multi_text(tag, ItemKey::TrackArtist, &metadata.artist.replace(", ", "; "));
+        // 3. Multi-Value Tags (Artists, Composer, Genre)
+        Self::insert_multi_text(tag, ItemKey::TrackArtist, &display_artist);
         
-        let album_artist = metadata.album_artist.as_deref().unwrap_or(&metadata.artist);
-        Self::insert_multi_text(tag, ItemKey::AlbumArtist, &album_artist.replace(", ", "; "));
+        let album_artist = metadata.album_artist.as_deref().unwrap_or(&final_artist);
+        let display_album_artist = album_artist.replace(", ", &config.separator).replace("; ", &config.separator);
+        Self::insert_multi_text(tag, ItemKey::AlbumArtist, &display_album_artist);
 
         if let Some(composer) = &metadata.composer {
-            Self::insert_multi_text(tag, ItemKey::Composer, &composer.replace(", ", "; "));
+            let display_composer = composer.replace(", ", &config.separator).replace("; ", &config.separator);
+            Self::insert_multi_text(tag, ItemKey::Composer, &display_composer);
         }
 
         if let Some(genre) = &metadata.genre {
-            Self::insert_multi_text(tag, ItemKey::Genre, &genre.replace(", ", "; "));
+            Self::insert_multi_text(tag, ItemKey::Genre, genre);
         }
 
         // 3. Numbers

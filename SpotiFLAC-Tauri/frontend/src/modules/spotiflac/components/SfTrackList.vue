@@ -1,5 +1,4 @@
 <template>
-  <!-- Mirrors TrackList.tsx 1:1 — full table with checkboxes, pagination, all action buttons -->
   <div class="sf-tracklist">
     <div class="sf-table-wrap">
       <div class="sf-overflow">
@@ -115,6 +114,25 @@
                     <span v-if="downloadingCoverTrack === (track.spotify_id || `${track.name}-${track.artists}`)" class="sf-spinner" />
                     <svg v-else class="h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                   </button>
+
+                  <!-- Availability -->
+                  <div class="sf-availability-wrap relative group/avail">
+                    <button v-if="track.spotify_id" class="sf-icon-btn sf-icon-btn--outline" 
+                      :disabled="checkingAvailability && checkingTrackId === track.spotify_id"
+                      @click="$emit('checkAvailability', track.spotify_id!)">
+                      <span v-if="checkingAvailability && checkingTrackId === track.spotify_id" class="sf-spinner" />
+                      <template v-else-if="availabilityMap?.has(track.spotify_id!)">
+                        <CheckCircle v-if="hasAvailabilityLinks(availabilityMap.get(track.spotify_id!)!)" class="h-4 w-4 text-green" />
+                        <XCircle v-else class="h-4 w-4 text-red" />
+                      </template>
+                      <Globe v-else class="h-4 w-4" />
+                    </button>
+                    
+                    <!-- Simple Tooltip for Table -->
+                    <div v-if="availabilityMap?.has(track.spotify_id!)" class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 p-2 bg-card border rounded-lg shadow-xl opacity-0 group-hover/avail:opacity-100 pointer-events-none group-hover/avail:pointer-events-auto transition-opacity z-50 min-w-[200px]">
+                      <SfAvailabilityLinks :availability="availabilityMap.get(track.spotify_id!)!" />
+                    </div>
+                  </div>
                 </div>
               </td>
             </tr>
@@ -137,6 +155,12 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import SfAvailabilityLinks from './SfAvailabilityLinks.vue';
+import { hasAvailabilityLinks } from '../utils/artist-links';
+import { 
+  Download, FolderOpen, CheckCircle, XCircle, 
+  FileText, FileCheck, Globe, ImageDown, Play, Pause 
+} from "lucide-vue-next";
 import { usePreview } from '../composables/usePreview';
 import { buildClickableArtists, type ClickableArtist } from '../utils/artist-links';
 import type { TrackMetadata, TrackAvailability } from '../types/api';
@@ -171,6 +195,8 @@ const props = withDefaults(defineProps<{
   onArtistClick?: (artist: { id: string; name: string; external_urls: string }) => void;
   onAlbumClick?: (album: { id: string; name: string; external_urls: string }) => void;
   onTrackClick?: (track: TrackMetadata) => void;
+  checkingAvailability?: boolean;
+  checkingTrackId?: string | null;
 }>(), {
   searchQuery: '',
   sortBy: 'title-asc',
@@ -202,6 +228,7 @@ const emit = defineEmits<{
   artistClick: [artist: { id: string; name: string; external_urls: string }];
   albumClick: [album: { id: string; name: string; external_urls: string }];
   trackClick: [track: TrackMetadata];
+  checkAvailability: [spotifyId: string];
 }>();
 
 const { playPreview, loadingPreview, playingTrack } = usePreview();
