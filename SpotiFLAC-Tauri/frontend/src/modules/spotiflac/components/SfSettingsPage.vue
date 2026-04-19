@@ -39,7 +39,7 @@ import {
   ChevronRight,
 } from "lucide-vue-next";
 import { invoke } from "@tauri-apps/api/core";
-import { toast } from "vue-sonner";
+import { toastWithSound as toast } from "../utils/toast-with-sound";
 import SfPlatformIcons from "./SfPlatformIcons.vue";
 
 const props = defineProps<{
@@ -81,7 +81,7 @@ const handleSave = async () => {
   await save({ ...tempSettings });
   hasUnsavedChanges.value = false;
   props.onUnsavedChangesChange?.(false);
-  toast.success("Settings saved successfully");
+  toast.success("Settings saved");
 };
 
 const handleReset = async () => {
@@ -89,7 +89,7 @@ const handleReset = async () => {
   Object.assign(tempSettings, settings.value);
   hasUnsavedChanges.value = false;
   props.onUnsavedChangesChange?.(false);
-  toast.success("Settings reset to defaults");
+  toast.success("Settings reset to default");
 };
 
 const resetToSavedSettings = () => {

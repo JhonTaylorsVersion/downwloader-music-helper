@@ -6,6 +6,17 @@ class AudioManager {
         }
         return this.audioContext;
     }
+    warmUp() {
+        try {
+            const ctx = this.getAudioContext();
+            if (ctx.state === "suspended") {
+                void ctx.resume();
+            }
+        }
+        catch (error) {
+            console.error("Error warming up audio:", error);
+        }
+    }
     private playTone(frequency: number, duration: number, type: OscillatorType = 'sine', volume: number = 0.3) {
         try {
             const ctx = this.getAudioContext();
@@ -66,6 +77,7 @@ class AudioManager {
     }
 }
 export const audioManager = new AudioManager();
+export const warmUpAudio = () => audioManager.warmUp();
 export const playSuccessSound = () => audioManager.playSuccess();
 export const playErrorSound = () => audioManager.playError();
 export const playWarningSound = () => audioManager.playWarning();

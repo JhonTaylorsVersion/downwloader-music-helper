@@ -100,8 +100,6 @@
         :failed-covers="failedCovers"
         :skipped-covers="skippedCovers"
         :downloading-cover-track="downloadingCoverTrack"
-        :on-download-lyrics="onDownloadAllLyrics"
-        :on-download-cover="onDownloadAllCovers"
         :on-artist-click="onArtistClick"
         :on-track-click="onTrackClick"
         :availability-map="availabilityMap"

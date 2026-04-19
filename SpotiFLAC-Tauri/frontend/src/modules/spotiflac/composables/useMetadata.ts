@@ -1,8 +1,8 @@
 import { onUnmounted, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { toast } from "vue-sonner";
 import { logger } from "../utils/logger";
+import { toastWithSound as toast } from "../utils/toast-with-sound";
 
 export type SpotifyMetadataResponse = any;
 
@@ -34,14 +34,14 @@ export function useMetadata() {
     const text = message.toLowerCase();
 
     if (loadingToastId.value == null) {
-      loadingToastId.value = toast.info(text, {
+      loadingToastId.value = toast.silentInfo(text, {
         duration: Infinity,
         description,
       });
       return;
     }
 
-    toast.info(text, {
+    toast.silentInfo(text, {
       id: loadingToastId.value,
       duration: Infinity,
       description,

@@ -399,10 +399,6 @@ async fn fetch_track_compat(
         .first()
         .map(|artist| artist.external_urls.clone());
 
-    let preview_url = spotiflac_core_rs::utils::spotify::SpotifyUtils::get_preview_url(track_id)
-        .await
-        .ok();
-
     Ok(TrackMetadataCompat {
         artists: track.artist,
         name: track.title,
@@ -435,7 +431,9 @@ async fn fetch_track_compat(
         publisher: track.label,
         composer: track.composer,
         plays,
-        preview_url,
+        // Match the original app behavior: preview URLs are resolved lazily
+        // only when the user presses Play, not during metadata fetch.
+        preview_url: None,
         status,
         is_explicit: track.is_explicit,
     })

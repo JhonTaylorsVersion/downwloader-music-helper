@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { computed, h, ref, onMounted, onUnmounted } from 'vue';
 import { Toaster } from 'vue-sonner';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -11,7 +11,7 @@ import {
   SfTitleBar
 } from './modules/spotiflac/components';
 import { type PageType } from './modules/spotiflac/components/SfSidebar.vue';
-import { ArrowUp } from 'lucide-vue-next';
+import { ArrowUp, CircleCheck, Info, LoaderCircle, OctagonX, TriangleAlert } from 'lucide-vue-next';
 import { useSettings } from './modules/spotiflac/composables/useSettings';
 import { useApiStatus } from './modules/spotiflac/composables/useApiStatus';
 import { Button } from '@/components/ui/button';
@@ -42,10 +42,46 @@ const ffmpegStatus = ref("");
 // Updates State
 const hasUpdate = ref(false);
 const releaseDate = ref<string | null>(null);
+const toasterTheme = ref<'light' | 'dark'>('light');
+let themeObserver: MutationObserver | null = null;
+
+const syncToasterTheme = () => {
+  toasterTheme.value = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+};
+
+const toasterIcons = {
+  success: h(CircleCheck, { class: 'size-4' }),
+  info: h(Info, { class: 'size-4' }),
+  warning: h(TriangleAlert, { class: 'size-4' }),
+  error: h(OctagonX, { class: 'size-4' }),
+  loading: h(LoaderCircle, { class: 'size-4 animate-spin' }),
+};
+
+const toasterOptions = computed(() => ({
+  class: 'font-mono lowercase',
+  classes: {
+    success: 'border-green-500 bg-green-50 text-green-900 dark:bg-green-950 dark:text-green-100 [&>svg]:text-green-500',
+    error: 'border-red-500 bg-red-50 text-red-900 dark:bg-red-950 dark:text-red-100 [&>svg]:text-red-500',
+    warning: 'border-yellow-500 bg-yellow-50 text-yellow-900 dark:bg-yellow-950 dark:text-yellow-100 [&>svg]:text-yellow-500',
+    info: 'border-blue-500 bg-blue-50 text-blue-900 dark:bg-blue-950 dark:text-blue-100 [&>svg]:text-blue-500',
+  },
+  style: {
+    '--normal-bg': 'var(--popover)',
+    '--normal-text': 'var(--popover-foreground)',
+    '--normal-border': 'var(--border)',
+    '--border-radius': 'var(--radius)',
+  },
+}));
 
 onMounted(async () => {
   // 1. Initial State (Theme & Local settings)
   await loadSettings();
+  syncToasterTheme();
+  themeObserver = new MutationObserver(syncToasterTheme);
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['class'],
+  });
   
   // 4. Show window IMMEDIATELY after settings are loaded (Eliminates transparent flicker)
   // We do this before network calls to ensure the window doesn't hang hidden.
@@ -114,6 +150,8 @@ onUnmounted(() => {
   if (cleanups) {
     cleanups.forEach((f: any) => f());
   }
+  themeObserver?.disconnect();
+  themeObserver = null;
   window.removeEventListener('scroll', handleScroll);
 });
 
@@ -324,7 +362,15 @@ const handleHistorySelect = (cachedData: string) => {
     </Dialog>
 
     <!-- Global Components -->
-    <Toaster position="bottom-right" richColors closeButton theme="dark" />
+    <Toaster
+      position="bottom-left"
+      :duration="1000"
+      :theme="toasterTheme"
+      :icons="toasterIcons"
+      :toastOptions="toasterOptions"
+      :offset="{ left: 'calc(56px + 1rem)', bottom: '1rem' }"
+      :mobileOffset="{ left: '1rem', right: '1rem', bottom: '1rem' }"
+    />
   </div>
 </template>
 

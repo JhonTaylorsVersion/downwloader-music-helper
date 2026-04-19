@@ -97,7 +97,7 @@
                   </button>
 
                   <!-- Lyrics -->
-                  <button v-if="track.spotify_id && onDownloadLyrics" class="sf-icon-btn sf-icon-btn--outline" title="Download Separate Lyric"
+                  <button v-if="track.spotify_id" class="sf-icon-btn sf-icon-btn--outline" title="Download Separate Lyric"
                     :disabled="downloadingLyricsTrack === track.spotify_id"
                     @click="$emit('downloadLyrics', track.spotify_id!, track.name, track.artists, track.album_name, folderName, isArtistDiscography, startIndex + index + 1, track.album_artist, track.release_date, track.disc_number)">
                     <span v-if="downloadingLyricsTrack === track.spotify_id" class="sf-spinner" />
@@ -108,7 +108,7 @@
                   </button>
 
                   <!-- Cover -->
-                  <button v-if="track.images && onDownloadCover" class="sf-icon-btn sf-icon-btn--outline" title="Download Separate Cover"
+                  <button v-if="track.images" class="sf-icon-btn sf-icon-btn--outline" title="Download Separate Cover"
                     :disabled="downloadingCoverTrack === (track.spotify_id || `${track.name}-${track.artists}`)"
                     @click="$emit('downloadCover', track.images, track.name, track.artists, track.album_name, folderName, isArtistDiscography, startIndex + index + 1, track.spotify_id || `${track.name}-${track.artists}`, track.album_artist, track.release_date, track.disc_number)">
                     <span v-if="downloadingCoverTrack === (track.spotify_id || `${track.name}-${track.artists}`)" class="sf-spinner" />

@@ -96,17 +96,17 @@ onUnmounted(() => {
 <style scoped>
 .sf-toast-wrap {
   position: fixed;
-  bottom: 2rem;
-  left: 5rem;
-  z-index: 100;
+  bottom: 1rem;
+  left: calc(56px + 1rem);
+  z-index: 50;
   cursor: pointer;
 }
 
 .sf-toast-card {
   position: relative;
   display: block;
-  background: hsl(var(--background));
-  border: 1px solid hsl(var(--border));
+  background: var(--background);
+  border: 1px solid var(--border);
   border-radius: 0.5rem;
   padding: 0.75rem;
   display: flex;
@@ -119,7 +119,7 @@ onUnmounted(() => {
 }
 
 .sf-toast-card:hover {
-  background: hsl(var(--muted));
+  background: var(--muted);
 }
 
 .sf-toast-inner {
@@ -157,14 +157,29 @@ onUnmounted(() => {
   font-size: 0.75rem;
   font-family: monospace;
   font-variant-numeric: tabular-nums;
-  color: hsl(var(--muted-foreground));
+  color: var(--muted-foreground);
 }
 
 .sf-chevron {
   width: 1rem;
   height: 1rem;
-  color: hsl(var(--muted-foreground));
+  color: var(--muted-foreground);
   margin-left: auto;
+}
+
+.dark .sf-toast-card {
+  border-color: rgb(30 64 175);
+  background: rgb(23 37 84);
+  color: rgb(219 234 254);
+}
+
+.dark .sf-toast-card:hover {
+  background: rgb(30 58 138);
+}
+
+.dark .sf-stat-sub,
+.dark .sf-chevron {
+  color: rgb(147 197 253);
 }
 
 @keyframes download-bounce {

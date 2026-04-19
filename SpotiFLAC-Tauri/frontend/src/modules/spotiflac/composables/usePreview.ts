@@ -1,7 +1,6 @@
 import { ref, onUnmounted } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { SPOTIFY_PREVIEW_VOLUME } from "../utils/preview";
-import { toastWithSound } from "../utils/toast-with-sound";
 import { toast } from "vue-sonner";
 
 export function usePreview() {
@@ -36,7 +35,7 @@ export function usePreview() {
             const previewURL: string = await invoke("get_preview_url", { trackId });
             
             if (!previewURL) {
-                toastWithSound.error("Preview not available", {
+                toast.error("Preview not available", {
                     description: `No preview found for "${trackName}"`,
                 });
                 loadingPreview.value = null;
@@ -55,7 +54,7 @@ export function usePreview() {
                 currentAudio.value = null;
             });
             audio.addEventListener("error", () => {
-                toastWithSound.error("Failed to play preview", {
+                toast.error("Failed to play preview", {
                     description: `Could not play preview for "${trackName}"`,
                 });
                 loadingPreview.value = null;
@@ -68,7 +67,7 @@ export function usePreview() {
         }
         catch (error: any) {
             console.error("Preview error:", error);
-            toastWithSound.error("Preview not available", {
+            toast.error("Preview not available", {
                 description: error?.message || `Could not load preview for "${trackName}"`,
             });
             loadingPreview.value = null;

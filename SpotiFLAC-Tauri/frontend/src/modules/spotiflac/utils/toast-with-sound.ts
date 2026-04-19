@@ -1,9 +1,9 @@
 import { toast } from "vue-sonner";
-import { playSuccessSound, playErrorSound, playWarningSound, playInfoSound, } from "./audio";
+import { warmUpAudio, playSuccessSound, playErrorSound, playWarningSound, playInfoSound, } from "./audio";
 import { logger } from "./logger";
 import { getSettings } from "./settings";
 const toastStyle = {
-    className: "font-mono lowercase",
+    class: "font-mono lowercase",
 };
 type ToastData = Parameters<typeof toast.success>[1];
 
@@ -17,9 +17,8 @@ const isSfxEnabled = () => {
 };
 
 export const toastWithSound = {
-    // Warm up the audio context (required by browsers)
     warmUp: () => {
-        playInfoSound(); // This will trigger the AudioContext creation/resume
+        warmUpAudio();
     },
     success: (message: string, data?: ToastData) => {
         const msg = message.toLowerCase();

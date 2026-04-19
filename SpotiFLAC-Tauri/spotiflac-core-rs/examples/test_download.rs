@@ -16,6 +16,16 @@ async fn main() -> anyhow::Result<()> {
         download_artist_images: true,
         embed_lyrics: true,
         save_lrc_file: true,
+        downloader: "tidal".to_string(),
+        auto_order: vec![
+            "tidal".to_string(),
+            "amazon".to_string(),
+            "deezer".to_string(),
+        ],
+        allow_resolver_fallback: true,
+        folder_structure: "{artist}/{album}".to_string(),
+        separator: " - ".to_string(),
+        use_first_artist_only: false,
     };
 
     // Crear carpeta si no existe

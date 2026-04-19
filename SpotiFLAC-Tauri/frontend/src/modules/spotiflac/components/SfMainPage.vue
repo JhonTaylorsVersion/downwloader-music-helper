@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import {
   SfSearchBar,
   SfAlbumView,
@@ -113,6 +113,9 @@ const url = ref('');
 const searchMode = ref(false);
 const region = ref('US');
 const selectedTracks = ref<string[]>([]);
+const searchQuery = ref('');
+const sortBy = ref('default');
+const currentListPage = ref(1);
 
 const handleFetch = () => {
   void handleFetchMetadata(url.value);
@@ -127,6 +130,9 @@ const handleBack = () => {
   resetMetadata();
   url.value = '';
   selectedTracks.value = [];
+  searchQuery.value = '';
+  sortBy.value = 'default';
+  currentListPage.value = 1;
 };
 
 const toggleTrack = (id: string) => {
@@ -137,13 +143,21 @@ const toggleTrack = (id: string) => {
   }
 };
 
-const toggleSelectAll = () => {
-  if (!metadata.value || !metadata.value.track_list) return;
+const toggleSelectAll = (tracks?: any[]) => {
+  const targetTracks = Array.isArray(tracks) && tracks.length > 0
+    ? tracks
+    : metadata.value?.track_list || [];
+  const trackIds = targetTracks
+    .map((t: any) => t.spotify_id || t.id)
+    .filter((id: string | undefined): id is string => Boolean(id));
 
-  if (selectedTracks.value.length === metadata.value.track_list.length) {
-    selectedTracks.value = [];
+  if (trackIds.length === 0) return;
+
+  const allSelected = trackIds.every((id: string) => selectedTracks.value.includes(id));
+  if (allSelected) {
+    selectedTracks.value = selectedTracks.value.filter((id) => !trackIds.includes(id));
   } else {
-    selectedTracks.value = metadata.value.track_list.map((t: any) => t.spotify_id || t.id);
+    selectedTracks.value = Array.from(new Set([...selectedTracks.value, ...trackIds]));
   }
 };
 
@@ -160,7 +174,50 @@ const handleDownloadAll = () => {
   void downloadBatch(metadata.value.track_list, getFolderNameForMetadata(metadata.value));
 };
 
-const handleDownloadSingleTrack = () => {
+const handleDownloadSingleTrack = (...args: any[]) => {
+  if (args.length > 0) {
+    const [
+      id,
+      name,
+      artists,
+      albumName,
+      spotifyId,
+      folderName,
+      durationMs,
+      position,
+      albumArtist,
+      releaseDate,
+      coverUrl,
+      trackNumber,
+      discNumber,
+      totalTracks,
+      totalDiscs,
+      copyright,
+      publisher,
+    ] = args;
+
+    void downloadTrack({
+      id,
+      name,
+      artists,
+      album_name: albumName,
+      spotify_id: spotifyId || id,
+      folder_name: folderName,
+      duration_ms: durationMs,
+      position,
+      album_artist: albumArtist,
+      release_date: releaseDate,
+      images: coverUrl,
+      track_number: trackNumber,
+      disc_number: discNumber,
+      total_tracks: totalTracks,
+      total_discs: totalDiscs,
+      copyright,
+      publisher,
+    });
+    return;
+  }
+
   if (!metadata.value || !('track' in metadata.value)) return;
   void downloadTrack(metadata.value.track);
 };
@@ -178,6 +235,13 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('spotiflac:history-select', handleHistoryRestore);
+});
+
+watch(metadata, () => {
+  selectedTracks.value = [];
+  searchQuery.value = '';
+  sortBy.value = 'default';
+  currentListPage.value = 1;
 });
 
 const currentView = computed(() => {
@@ -267,6 +331,9 @@ const hasMetadataResult = computed(() => currentView.value !== 'history');
           :is-downloading="isDownloading"
           :download-progress="downloadProgress"
           :current-download-info="currentDownloadInfo"
+          :search-query="searchQuery"
+          :sort-by="sortBy"
+          :current-page="currentListPage"
           :selected-tracks="selectedTracks"
           :downloaded-tracks="downloadedTracks"
           
@@ -288,14 +355,19 @@ const hasMetadataResult = computed(() => currentView.value !== 'history');
           
           @download-all="handleDownloadAll"
           @download-selected="handleDownloadBatch"
+          @download-track="handleDownloadSingleTrack"
           @download-all-lyrics="() => apiDownloadAllLyrics(metadata.track_list, metadata.album_info.name, false, true)"
           @download-all-covers="() => apiDownloadAllCovers(metadata.track_list, metadata.album_info.name, true)"
-          @download-lyrics="apiDownloadLyrics"
-          @download-cover="apiDownloadCover"
+          @download-lyrics="handleDownloadLyricsWrapper"
+          @download-cover="handleDownloadCoverWrapper"
+          @check-availability="apiCheckAvailability"
           @open-folder="handleOpenFolder"
           
           @toggle-track="toggleTrack"
           @toggle-select-all="toggleSelectAll"
+          @search-change="searchQuery = $event"
+          @sort-change="sortBy = $event"
+          @page-change="currentListPage = $event"
           @artist-click="(artist: { id: string; name: string; external_urls: string }) => void handleArtistClick(artist)"
           @track-click="(track: { external_urls?: string }) => track.external_urls && handleFetchUrl(track.external_urls)"
           @back="handleBack"
@@ -308,6 +380,9 @@ const hasMetadataResult = computed(() => currentView.value !== 'history');
           :is-downloading="isDownloading"
           :download-progress="downloadProgress"
           :current-download-info="currentDownloadInfo"
+          :search-query="searchQuery"
+          :sort-by="sortBy"
+          :current-page="currentListPage"
           :downloaded-tracks="downloadedTracks"
           :selected-tracks="selectedTracks"
           
@@ -339,6 +414,9 @@ const hasMetadataResult = computed(() => currentView.value !== 'history');
           
           @toggle-track="toggleTrack"
           @toggle-select-all="toggleSelectAll"
+          @search-change="searchQuery = $event"
+          @sort-change="sortBy = $event"
+          @page-change="currentListPage = $event"
           @artist-click="(artist: { id: string; name: string; external_urls: string }) => void handleArtistClick(artist)"
           @track-click="(track: { external_urls?: string }) => track.external_urls && handleFetchUrl(track.external_urls)"
         />
@@ -351,8 +429,14 @@ const hasMetadataResult = computed(() => currentView.value !== 'history');
           :is-downloading="isDownloading"
           :download-progress="downloadProgress"
           :current-download-info="currentDownloadInfo"
+          :search-query="searchQuery"
+          :sort-by="sortBy"
+          :current-page="currentListPage"
           :selected-tracks="selectedTracks"
           :downloaded-tracks="downloadedTracks"
+          :failed-tracks="failedTracks"
+          :skipped-tracks="skippedTracks"
+          :downloading-track="currentDownloadInfo?.id || null"
           
           :downloaded-lyrics="downloadedLyrics"
           :failed-lyrics="failedLyrics"
@@ -371,6 +455,7 @@ const hasMetadataResult = computed(() => currentView.value !== 'history');
           :checking-track-id="checkingTrackId"
           
           @download-all="handleDownloadAll"
+          @download-selected="handleDownloadBatch"
           @download-all-lyrics="() => apiDownloadAllLyrics(metadata.track_list, metadata.artist_info.name, true, false)"
           @download-all-covers="() => apiDownloadAllCovers(metadata.track_list, metadata.artist_info.name, false)"
           @download-track="handleDownloadSingleTrack"
@@ -381,7 +466,12 @@ const hasMetadataResult = computed(() => currentView.value !== 'history');
           
           @toggle-track="toggleTrack"
           @toggle-select-all="toggleSelectAll"
+          @search-change="searchQuery = $event"
+          @sort-change="sortBy = $event"
+          @page-change="currentListPage = $event"
           @album-click="handleAlbumClick"
+          @artist-click="(artist: { id: string; name: string; external_urls: string }) => void handleArtistClick(artist)"
+          @track-click="(track: { external_urls?: string }) => track.external_urls && handleFetchUrl(track.external_urls)"
           @back="handleBack"
         />
       </template>
